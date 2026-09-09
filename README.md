@@ -1,5 +1,8 @@
 # Registry Stack adaptors for OpenFn
 
+**Beta:** intended for supervised, self-hosted pilots. APIs and deployment
+configuration may change before 1.0.
+
 A self-hosted synthetic pilot connecting upstream OpenFn Lightning to Registry
 Stack Base Registry Engine (BREG) and signed Evidence. It demonstrates registration,
 reviewed correction, and an idempotent downstream update containing a verified
