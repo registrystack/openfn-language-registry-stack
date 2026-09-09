@@ -83,8 +83,9 @@ It checks each service's private bind mount under the selected UID without
 printing contents. Moving a pilot to another operator requires an explicit
 ownership transfer of retained private files and updating `deployment/.env`;
 the wrapper refuses to silently use another operator's settings. Do not make
-private keys world-readable. The images were checked running with a non-default
-UID/GID on macOS/OrbStack; a separate Linux host has not been exercised.
+private keys world-readable. Local image checks use a non-default UID/GID on
+macOS/OrbStack. The focused GitHub Actions gate runs fresh setup, the complete
+workflow journey, retained restart and failure recovery on Ubuntu 24.04.
 
 External Sentry reporting is explicitly disabled for worker and Lightning, and
 Lightning usage tracking is disabled. The worker uses its dedicated writable
