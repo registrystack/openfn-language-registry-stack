@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const { generateKeyPairSync, createHash } = require('node:crypto');
+const { createRequire } = require('node:module');
+const { evidence, breg } = createRequire('/opt/registry-adaptors/package.json')('@registrystack/client');
+const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const jwk = publicKey.export({ format: 'jwk' });
+const kid = createHash('sha256').update(JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y })).digest('base64url');
+new evidence.EvidenceClient({ baseUrl: 'http://127.0.0.1:8080', trustedJwks: { keys: [{ ...jwk, kid, alg: 'ES256' }] }, revokedKeyIds: [], token: { static: 'synthetic-test-value' } });
+new breg.BaseRegistryClient({ baseUrl: 'http://127.0.0.1:8090' });
+assert.ok(process.report.getReport().header.glibcVersionRuntime);
+console.log(JSON.stringify({ verified: 'native-evidence-and-breg-constructors', architecture: process.arch, node: process.version, glibc: process.report.getReport().header.glibcVersionRuntime }));

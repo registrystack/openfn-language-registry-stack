@@ -1,0 +1,213 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "evidence_base_url": {
+      "title": "Registry Evidence URL",
+      "type": "string",
+      "description": "Base URL for the Registry Stack Evidence service.",
+      "format": "uri",
+      "minLength": 1,
+      "examples": [
+        "https://evidence.example.gov"
+      ]
+    },
+    "token": {
+      "title": "Bearer Token",
+      "type": "string",
+      "description": "Legacy static bearer token. Use evidence.token for new jobs.",
+      "writeOnly": true,
+      "minLength": 1
+    },
+    "evidence_verification_jwks": {
+      "title": "Pinned Evidence Verification JWKS",
+      "type": "string",
+      "description": "Pinned trusted Evidence verification JWKS JSON. The adaptor never downloads trust material from the assertion or service.",
+      "minLength": 1
+    },
+    "evidence_revoked_key_ids": {
+      "title": "Revoked Evidence Key IDs",
+      "type": "string",
+      "description": "JSON array of current service-key RFC 7638 thumbprints. Required even when the reviewed list is empty.",
+      "minLength": 2,
+      "default": "[]"
+    },
+    "evidence_trusted_root_certificates": {
+      "title": "Trusted Root Certificates",
+      "type": "string",
+      "description": "Optional PEM certificate bundle for the Evidence service TLS connection.",
+      "writeOnly": true
+    },
+    "evidence_max_response_bytes": {
+      "title": "Maximum Signed Response Bytes",
+      "type": "integer",
+      "description": "Optional maximum byte size for a signed Evidence response.",
+      "minimum": 1
+    },
+    "evidence": {
+      "title": "Evidence Client Configuration",
+      "description": "Current SDK configuration, or a mounted progressive client profile. Credentials remain available inside a job and the OpenFn runtime removes configuration at its output boundary.",
+      "type": "object",
+      "oneOf": [
+        {
+          "required": [
+            "baseUrl",
+            "trustedJwks",
+            "revokedKeyIds",
+            "token"
+          ],
+          "not": {
+            "required": [
+              "profilePath"
+            ]
+          }
+        },
+        {
+          "required": [
+            "profilePath"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "profilePath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "privateKeyJwk": {
+              "type": "object",
+              "writeOnly": true
+            }
+          }
+        }
+      ],
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "trustedJwks": {
+          "type": "object",
+          "required": [
+            "keys"
+          ],
+          "properties": {
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "revokedKeyIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "token": {
+          "type": "object",
+          "writeOnly": true,
+          "oneOf": [
+            {
+              "required": [
+                "static"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "static": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            {
+              "required": [
+                "privateKeyJwt"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "privateKeyJwt": {
+                  "type": "object",
+                  "required": [
+                    "tokenEndpoint",
+                    "clientId",
+                    "clientKey"
+                  ],
+                  "properties": {
+                    "tokenEndpoint": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "clientKey": {
+                      "type": "object",
+                      "writeOnly": true
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "evidence"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "evidence_base_url"
+            ]
+          },
+          {
+            "required": [
+              "token"
+            ]
+          },
+          {
+            "required": [
+              "evidence_verification_jwks"
+            ]
+          },
+          {
+            "required": [
+              "evidence_revoked_key_ids"
+            ]
+          },
+          {
+            "required": [
+              "evidence_trusted_root_certificates"
+            ]
+          },
+          {
+            "required": [
+              "evidence_max_response_bytes"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "evidence_base_url",
+        "token",
+        "evidence_verification_jwks",
+        "evidence_revoked_key_ids"
+      ],
+      "not": {
+        "required": [
+          "evidence"
+        ]
+      }
+    }
+  ]
+}

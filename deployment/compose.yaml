@@ -1,0 +1,209 @@
+name: registry-openfn-pilot
+
+services:
+  volume-init:
+    image: node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b
+    platform: linux/amd64
+    user: root
+    environment:
+      PILOT_UID: ${PILOT_UID:-1000}
+      PILOT_GID: ${PILOT_GID:-1000}
+    # Do not touch metadata of already-owned audit files on resumed starts.
+    command: [sh, -ec, 'find /mint-audit /evidence-audit /destination-data /worker-cache \( ! -uid "$$PILOT_UID" -o ! -gid "$$PILOT_GID" \) -exec chown "$$PILOT_UID:$$PILOT_GID" {} +; find /mint-audit /evidence-audit /destination-data /worker-cache -maxdepth 0 ! -perm 0700 -exec chmod 0700 {} +']
+    volumes:
+      - mint-audit:/mint-audit
+      - evidence-audit:/evidence-audit
+      - destination-data:/destination-data
+      - worker-cache:/worker-cache
+
+  lightning-db:
+    image: postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    env_file: ../pilot/agriculture/.runtime/openfn/postgres.env
+    volumes:
+      - lightning-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  breg-db:
+    image: registry-openfn-postgres:pilot
+    platform: linux/amd64
+    env_file: ../pilot/agriculture/.runtime/breg-db/postgres.env
+    volumes:
+      - breg-db:/var/lib/postgresql/data
+      - ../pilot/agriculture/.runtime/breg-db:/config/postgres:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  lightning:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: registry-openfn-lightning:pilot
+    platform: linux/amd64
+    env_file: ../pilot/agriculture/.runtime/openfn/lightning.env
+    environment:
+      PORT: '4000'
+      URL_SCHEME: http
+      URL_HOST: localhost
+      URL_PORT: '4000'
+      USAGE_TRACKING_ENABLED: 'false'
+      LOCAL_ADAPTORS: 'true'
+      OPENFN_ADAPTORS_REPO: /opt/registry-adaptors
+    volumes:
+      - ../pilot/lightning:/opt/pilot/lightning:ro
+      - ../pilot/agriculture/.runtime/openfn/secrets:/run/pilot-secrets
+    ports: ['127.0.0.1:4000:4000']
+    depends_on:
+      lightning-db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:4000/health_check]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    restart: unless-stopped
+
+  # Mint can start from offline configuration before the BREG package is built.
+  # Owning this namespace keeps development HTTP on loopback without weakening
+  # Registry Stack's destination or token endpoint policies.
+  mint:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: ghcr.io/registrystack/mint:v0.27.0@sha256:cf16981eb2e992722c0e00f3c2b68c85a875843c838bd7ba7f728b456322282e
+    platform: linux/amd64
+    command: [serve, --config, /config/mint/mint.json]
+    volumes:
+      - ../pilot/agriculture/.runtime/mint:/config/mint:ro
+      - mint-audit:/var/lib/mint
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+    ports:
+      - '127.0.0.1:4001:8081'
+      - '127.0.0.1:4002:8090'
+    restart: unless-stopped
+
+  breg:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: ghcr.io/registrystack/breg:v0.27.0@sha256:222e4ee3e27f7ee5f237dc06693a07773222b39ef15051abb27bac2cae632586
+    platform: linux/amd64
+    network_mode: service:mint
+    command: [--config, /config/breg/runtime.json]
+    environment:
+      SSL_CERT_FILE: /config/breg/secrets/database-ca.pem
+    volumes:
+      - ../pilot/agriculture/.runtime/breg:/config/breg:ro
+    depends_on:
+      mint: {condition: service_started}
+      breg-db: {condition: service_healthy}
+    restart: unless-stopped
+
+  evidence:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: ghcr.io/registrystack/evidence:v0.27.0@sha256:9b9ddae7fe9d1185f9423a7ca57ea612d178a154df5f42d26f91ff62dc03f4d8
+    platform: linux/amd64
+    network_mode: service:mint
+    command: [serve, --runtime, /config/evidence/runtime.yaml]
+    volumes:
+      - ../pilot/agriculture/.runtime/evidence:/config/evidence:ro
+      - evidence-audit:/var/lib/evidence
+    depends_on:
+      mint: {condition: service_started}
+      breg: {condition: service_started}
+    restart: unless-stopped
+
+  worker:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: registry-openfn-worker:pilot
+    platform: linux/amd64
+    network_mode: service:mint
+    env_file: ../pilot/agriculture/.runtime/openfn/worker.env
+    environment:
+      OPENFN_ADAPTORS_REPO: /opt/registry-adaptors
+      WORKER_LIGHTNING_SERVICE_URL: ws://lightning:4000/worker
+      WORKER_STATE_PROPS_TO_REMOVE: configuration
+      WORKER_REPO_DIR: /var/cache/openfn/repo
+      WORKER_SENTRY_DSN: ''
+      SENTRY_DSN: ''
+    volumes:
+      - ../pilot/agriculture/.runtime/evidence-client:/config/evidence-client:ro
+      - worker-cache:/var/cache/openfn
+    depends_on:
+      mint: {condition: service_started}
+      lightning: {condition: service_healthy}
+    restart: unless-stopped
+
+  bridge:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: registry-openfn-services:pilot
+    platform: linux/amd64
+    network_mode: service:mint
+    command: [node, services/event-bridge/src/server.js]
+    env_file: ../pilot/agriculture/.runtime/openfn/bridge.env
+    environment:
+      PORT: '8081'
+      ALLOW_HTTP: 'true'
+      BREG_HMAC_KEY_FILE: /config/bridge/breg-hmac-key
+      BREG_EXPECTED_EVENTS_FILE: /config/bridge/expected-events.json
+      BREG_EXPECTED_ENTITY: farm
+      BREG_ALLOWED_VALUE_FIELDS_FILE: /config/bridge/allowed-value-fields.json
+      OPENFN_API_KEY_FILE: /config/bridge/openfn-api-key
+      MAX_BODY_BYTES: '65536'
+      MAX_DELIVERY_SKEW_SECONDS: '300'
+      OPENFN_TIMEOUT_MS: '3000'
+    volumes:
+      - ../pilot/agriculture/.runtime/bridge:/config/bridge:ro
+    depends_on:
+      mint: {condition: service_started}
+      lightning: {condition: service_healthy}
+    restart: unless-stopped
+
+  destination:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: registry-openfn-services:pilot
+    platform: linux/amd64
+    command: [node, services/destination/src/server.js]
+    environment:
+      PORT: '8082'
+      DESTINATION_API_KEY_FILE: /config/destination/api-key
+      DESTINATION_DB_PATH: /data/destination.sqlite
+    volumes:
+      - ../pilot/agriculture/.runtime/destination:/config/destination:ro
+      - destination-data:/data
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+  tools:
+    user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
+    image: registry-openfn-tools:pilot
+    platform: linux/amd64
+    network_mode: service:mint
+    profiles: [tools]
+    working_dir: /workspace
+    environment:
+      SSL_CERT_FILE: /config/breg/secrets/database-ca.pem
+    volumes:
+      - ..:/workspace:ro
+      - ../pilot/agriculture:/opt/pilot/agriculture:ro
+      - ../pilot/agriculture/.runtime:/workspace/pilot/agriculture/.runtime
+      - ../pilot/agriculture/.runtime/breg:/config/breg
+      - ../pilot/agriculture/.runtime/evidence:/config/evidence
+      - ../pilot/agriculture/.runtime/mint:/config/mint
+      - ../pilot/agriculture/.runtime/evidence-client:/config/evidence-client
+    depends_on:
+      mint: {condition: service_started}
+      breg-db: {condition: service_healthy}
+    entrypoint: []
+    command: [python3, --version]
+
+volumes:
+  lightning-db:
+  breg-db:
+  mint-audit:
+  evidence-audit:
+  worker-cache:
+  destination-data:

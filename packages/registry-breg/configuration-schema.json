@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Registry Stack Base Registry Engine",
+  "description": "Place this object in configuration.breg, or use it directly as configuration. Credentials must remain in OpenFn configuration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["baseUrl"],
+  "properties": {
+    "baseUrl": { "type": "string", "format": "uri", "description": "Base Registry deployment URL, including any reverse-proxy prefix." },
+    "authorization": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["static"], "properties": { "static": { "type": "string", "minLength": 1, "writeOnly": true, "format": "password", "description": "Bearer token without the Bearer prefix." } } },
+        { "type": "object", "additionalProperties": false, "required": ["privateKeyJwt"], "properties": { "privateKeyJwt": { "$ref": "#/$defs/privateKeyJwt" } } }
+      ]
+    },
+    "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
+    "connectTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
+    "maxResponseBytes": { "type": "integer", "minimum": 1 },
+    "userAgent": { "type": "string" },
+    "trustedRootCertificates": { "type": "string", "description": "PEM trust roots for the Registry HTTPS connection." }
+  },
+  "$defs": {
+    "privateKeyJwt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tokenEndpoint", "clientId", "clientKey"],
+      "properties": {
+        "tokenEndpoint": { "type": "string", "format": "uri" },
+        "clientId": { "type": "string", "minLength": 1 },
+        "clientKey": { "type": "object", "writeOnly": true, "required": ["kty", "kid", "alg"], "properties": { "kty": { "type": "string" }, "kid": { "type": "string" }, "alg": { "type": "string" } }, "additionalProperties": true },
+        "audience": { "type": "string" },
+        "assertionLifetimeSeconds": { "type": "integer", "minimum": 1 },
+        "refreshMarginSeconds": { "type": "integer", "minimum": 0 },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
+        "connectTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
+        "userAgent": { "type": "string" },
+        "trustedRootCertificates": { "type": "string", "description": "PEM trust roots for the token endpoint." }
+      }
+    }
+  }
+}

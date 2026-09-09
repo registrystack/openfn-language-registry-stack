@@ -1,19 +1,66 @@
-name: CI
+name: Registry OpenFn pilot
 
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: registry-openfn-pilot-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  adaptor-and-service-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.19.0
           cache: npm
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run check
+      - name: Install the committed npm dependency graph
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check Evidence, BREG, event services and compiled pilot jobs
+        run: npm run check
+      - name: Check adaptor package contents
+        run: npm run pack:dry-run
+
+  linux-pilot-acceptance:
+    needs: adaptor-and-service-checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned images, execute the native worker gate and set up the pilot
+        # Setup owns the build and suppresses raw upstream subprocess output.
+        run: ./deployment/pilot.sh setup
+      - name: Check private mount ownership
+        run: ./deployment/check-permissions.sh
+      - name: Run registration, governed correction and verified destination acceptance
+        run: python3 pilot/smoke.py --timeout 300
+      - name: Verify retained records and exact replay after service restart
+        run: python3 pilot/smoke.py --restart-recovery --timeout 300
+      - name: Verify delivery retry, failed-step replay and queued-work recovery
+        run: python3 pilot/recovery.py --scenario all --timeout 300
+      - name: Report service status without logs or credentials
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f pilot/agriculture/.runtime/prepared.json ]; then
+            ./deployment/pilot.sh status
+          fi
+      - name: Stop application services and retain isolated test data until runner disposal
+        if: always()
+        shell: bash
+        run: |
+          if [ -f pilot/agriculture/.runtime/prepared.json ]; then
+            if ! ./deployment/pilot.sh stop >/dev/null 2>&1; then
+              echo 'Pilot stop did not complete. The isolated CI runner will be disposed.'
+            fi
+          fi
+          # Never upload runtime files, private keys, dataclips or raw service logs.

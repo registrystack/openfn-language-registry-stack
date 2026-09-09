@@ -8,11 +8,18 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "npm run check --workspaces",
-    "test": "npm test --workspaces",
-    "pack:dry-run": "npm run pack:dry-run --workspaces"
+    "check": "npm run check:evidence && npm run check:breg && npm run check:events && npm run check:pilot",
+    "check:evidence": "npm run check --workspace @openfn/language-registry-evidence",
+    "check:breg": "npm run check --workspace @openfn/language-registry-breg",
+    "check:events": "node --test services/event-bridge/test/*.test.js services/destination/test/*.test.js",
+    "check:pilot": "node --experimental-vm-modules --no-warnings --test pilot/test/*.test.js && python3 -m unittest discover -s pilot/test -p \"*_test.py\"",
+    "test": "npm run check",
+    "pack:dry-run": "npm run pack:dry-run --workspace @openfn/language-registry-evidence && npm run pack:dry-run --workspace @openfn/language-registry-breg"
+  },
+  "dependencies": {
+    "@openfn/language-http": "7.3.3"
   },
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=22.12.0"
   }
 }

@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+**/__pycache__
+pilot/agriculture/.runtime
+deployment/.env
+deployment/.runtime
+deployment/.build
+coverage
+*.tgz
+npm-debug.log*

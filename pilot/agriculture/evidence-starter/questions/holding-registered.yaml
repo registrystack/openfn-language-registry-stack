@@ -1,0 +1,41 @@
+{
+  "id": "holding-registered",
+  "question": "Is this agricultural holding registered?",
+  "purpose": "holding-verification",
+  "subject": {
+    "role": "subject",
+    "profiles": [
+      "breg-8-registry-4-farm-19-by-local-identifier"
+    ]
+  },
+  "source": {
+    "ref": "holding-register"
+  },
+  "answers": [
+    {
+      "concept": "registered",
+      "id": "urn:example:concept:holding-registered:registered",
+      "type": "boolean"
+    }
+  ],
+  "derivation": "derivations/holding-registered.rhai",
+  "disclosure": {
+    "allow": [
+      "registered"
+    ]
+  },
+  "governance": {
+    "requirement": "urn:example:requirement:holding-registered:v1",
+    "kind": "criterion",
+    "referenceFrameworks": [
+      "urn:example:framework:holding-register:v1"
+    ],
+    "evidenceType": "urn:example:evidence:holding-registered",
+    "validitySeconds": 300,
+    "observationTimezone": "UTC",
+    "fixtures": "fixtures/holding-registered.yaml",
+    "disclosureFamilies": [
+      "urn:example:disclosure-family:holding-registered"
+    ]
+  }
+}

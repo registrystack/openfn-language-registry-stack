@@ -1,0 +1,3 @@
+**
+!deployment
+!deployment/postgres-tls-entrypoint.sh
