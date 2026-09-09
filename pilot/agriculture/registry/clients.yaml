@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "clients": [
+    {
+      "id": "reader",
+      "accessProfiles": [
+        "reader"
+      ],
+      "scopes": [
+        "starter:reader"
+      ],
+      "claims": {
+        "registry_principal": "synthetic-reader",
+        "registry_purpose": "starter-learning"
+      }
+    },
+    {
+      "id": "editor",
+      "accessProfiles": [
+        "editor"
+      ],
+      "scopes": [
+        "starter:editor"
+      ],
+      "claims": {
+        "registry_principal": "synthetic-editor",
+        "registry_purpose": "starter-learning"
+      }
+    },
+    {
+      "id": "reviewer",
+      "accessProfiles": [
+        "reviewer"
+      ],
+      "scopes": [
+        "starter:reviewer"
+      ],
+      "claims": {
+        "registry_principal": "synthetic-reviewer",
+        "registry_purpose": "starter-learning"
+      }
+    },
+    {
+      "id": "openfn-service",
+      "accessProfiles": [
+        "openfn-service"
+      ],
+      "scopes": [
+        "pilot:submit"
+      ],
+      "claims": {
+        "registry_principal": "synthetic-openfn-service",
+        "registry_purpose": "agriculture-registration"
+      }
+    },
+    {
+      "id": "evidence-source",
+      "accessProfiles": [
+        "evidence-source"
+      ],
+      "scopes": [
+        "pilot:evidence-source"
+      ],
+      "claims": {
+        "registry_principal": "synthetic-evidence-source",
+        "registry_purpose": "evidence-source-read"
+      }
+    }
+  ]
+}

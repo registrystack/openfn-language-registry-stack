@@ -1,0 +1,33 @@
+{
+  "name": "@openfn/language-registry-evidence",
+  "version": "0.1.0",
+  "description": "OpenFn language helpers for Registry Stack Evidence.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "jobs",
+    "configuration-schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --experimental-vm-modules --no-warnings --test test/evidence.test.js",
+    "check": "node --check src/index.js && node --check jobs/request-evidence.js && node --check jobs/request-evidence-profile.js && npm test",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@openfn/language-common": "3.3.4",
+    "@registrystack/client": "0.27.0"
+  },
+  "devDependencies": {
+    "@openfn/compiler": "1.3.0",
+    "@openfn/runtime": "1.9.5"
+  }
+}

@@ -3,3 +3,8 @@ node_modules/
 npm-debug.log*
 .DS_Store
 coverage/
+pilot/agriculture/.runtime/
+deployment/.env
+deployment/.build/
+deployment/.runtime/
+__pycache__/
