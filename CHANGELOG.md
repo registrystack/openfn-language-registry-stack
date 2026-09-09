@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- Removed the Relay v1 adaptor (`@openfn/language-registry-relay`), its
+  credential schema, example job, tests and workspace dependencies. Workflows
+  using that local adaptor must be updated before upgrading. No Relay v2
+  replacement is included.
+
 ## 0.1.0 Beta
 
 First self-hosted Evidence and BREG agricultural-holdings pilot.

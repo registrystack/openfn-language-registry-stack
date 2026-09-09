@@ -23,6 +23,12 @@ The maintained pilot uses:
 [Image identities](deployment/images.lock.json), the npm lockfile, and bootstrap
 [tool checksums](deployment/tools.sha256) pin the delivered dependencies.
 
+Relay v1 support has been removed. The `@openfn/language-registry-relay`
+package, including its helpers, credential schema and example job, is no longer
+available through `OPENFN_ADAPTORS_REPO`. Existing workflows using it must be
+updated before adopting this checkout. This repository does not currently
+provide a Relay v2 adaptor.
+
 ## What the three workflows do
 
 | Workflow | Authoritative result | Response and boundary |
