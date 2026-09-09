@@ -4,8 +4,8 @@ OpenFn helpers for reading protected Registry Relay APIs from workflows.
 
 Use this package when a workflow is authorized to read registry rows, metadata,
 relationships, or aggregate outputs directly. Use
-`@openfn/language-registry-notary` when the workflow needs a trust decision or a
-certified value claim.
+`@openfn/language-registry-evidence` when the workflow needs a signed trust
+decision instead of the data.
 
 When this repository is used as `OPENFN_ADAPTORS_REPO`, this package is loaded
 as:
@@ -13,6 +13,22 @@ as:
 ```text
 @openfn/language-registry-relay@local
 ```
+
+## Compatibility
+
+The helpers here speak the Relay V1 route surface: `/v1/datasets`,
+`/v1/datasets/{dataset}/entities/{entity}/records`, and `/metadata/...`. The
+public Registry Stack lab still serves it.
+
+Relay V2 is a different runtime with a different surface. It answers under
+`/v2/resources/{resource}` with records, lookups, and searches, and its
+capability inventory reports `evidence` among the families it does not support.
+No helper in this package reaches a V2 deployment, and the evidence-offering
+listing has no V2 successor: Registry Manifest publishes offerings there.
+
+Relay sits outside the repository's 0.1.0 beta scope. The root `npm run check`
+and `npm run pack:dry-run` cover the Evidence and BREG adaptors only; this
+package's own tests run with `npm test` inside `packages/registry-relay`.
 
 ## Configure
 
@@ -128,6 +144,9 @@ execute(
 );
 ```
 
+`listEvidenceOfferings` reads the V1 `/metadata/evidence-offerings` route. Do
+not carry it into work aimed at Relay V2.
+
 ## Result Branches
 
 Every helper writes its result under `state.data[as]`. If `as` is omitted, the
@@ -161,6 +180,6 @@ Problem Details are reduced to safe fields: `code`, `status`, `title`, and
 - Credentials, raw request material, and `configuration` are removed from final
   state.
 
-Relay is a protected consultation API. It can publish evidence offerings, but it
-does not evaluate trust decisions. Use the Registry Notary adaptor for claim
-evaluation and certified value claims.
+Relay is a protected consultation API. It does not evaluate trust decisions.
+Use the Registry Evidence adaptor when a workflow needs a signed assertion
+rather than the underlying rows.
