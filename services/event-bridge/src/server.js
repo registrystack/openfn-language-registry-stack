@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import { pathToFileURL } from 'node:url';
+import { DurableInbox } from './inbox.js';
 
 export const EVENT_PATH = '/events/breg';
 const SIGNED_HEADERS = [
@@ -27,24 +28,33 @@ function positive(value, fallback, maximum) {
 export function loadConfig(env = process.env) {
   try {
     const hmacKey = readFileSync(env.BREG_HMAC_KEY_FILE);
-    const apiKey = readFileSync(env.OPENFN_API_KEY_FILE, 'utf8');
+    const deliveryMode = env.OPENFN_DELIVERY_MODE ?? 'webhook';
+    if (!['webhook', 'cli'].includes(deliveryMode)) throw new Error('invalid delivery mode');
+    const apiKey = deliveryMode === 'webhook' ? readFileSync(env.OPENFN_API_KEY_FILE, 'utf8') : undefined;
     const expectedEvents = JSON.parse(readFileSync(env.BREG_EXPECTED_EVENTS_FILE, 'utf8'));
     const allowedValueFields = JSON.parse(readFileSync(env.BREG_ALLOWED_VALUE_FIELDS_FILE, 'utf8'));
-    const url = new URL(env.OPENFN_WEBHOOK_URL);
-    if (hmacKey.length < 32 || !/^[\x21-\x7e]+$/.test(apiKey) ||
+    const url = deliveryMode === 'webhook' ? new URL(env.OPENFN_WEBHOOK_URL) : undefined;
+    if (hmacKey.length < 32 || (apiKey !== undefined && !/^[\x21-\x7e]+$/.test(apiKey)) ||
         !env.BREG_EXPECTED_SOURCE || !env.BREG_EXPECTED_ENTITY ||
         !object(expectedEvents) || Object.keys(expectedEvents).length === 0 ||
         Object.entries(expectedEvents).some(([type, binding]) => !type || !object(binding) ||
-          typeof binding.schema !== 'string' || !binding.schema || !['created', 'patched'].includes(binding.trigger)) ||
+          typeof binding.schema !== 'string' || !binding.schema || !['created', 'patched', 'request_lifecycle'].includes(binding.trigger) ||
+          (binding.entity !== undefined && (typeof binding.entity !== 'string' || !binding.entity)) ||
+          (binding.valueFields !== undefined && (!Array.isArray(binding.valueFields) ||
+            binding.valueFields.some(field => typeof field !== 'string' || !field) ||
+            new Set(binding.valueFields).size !== binding.valueFields.length)) ||
+          (deliveryMode === 'cli' && (typeof binding.effect !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(binding.effect)))) ||
         !Array.isArray(allowedValueFields) || allowedValueFields.length === 0 ||
         allowedValueFields.some(field => typeof field !== 'string' || !field) ||
         new Set(allowedValueFields).size !== allowedValueFields.length ||
-        url.username || url.password || url.hash || url.search ||
-        (url.protocol !== 'https:' && !(url.protocol === 'http:' && env.ALLOW_HTTP === 'true'))) {
+        (deliveryMode === 'cli' && (!env.OPENFN_INBOX_PATH || env.OPENFN_WEBHOOK_URL || env.OPENFN_API_KEY_FILE)) ||
+        (url && (url.username || url.password || url.hash || url.search ||
+          (url.protocol !== 'https:' && !(url.protocol === 'http:' && env.ALLOW_HTTP === 'true'))))) {
       throw new Error('invalid configuration');
     }
     return {
-      hmacKey, apiKey, expectedEvents, allowedValueFields,
+      hmacKey, apiKey, expectedEvents, allowedValueFields, deliveryMode,
+      inboxPath: env.OPENFN_INBOX_PATH,
       expectedSource: env.BREG_EXPECTED_SOURCE, expectedEntity: env.BREG_EXPECTED_ENTITY,
       openfnUrl: url, port: positive(env.PORT, 8081, 65535),
       maxBodyBytes: positive(env.MAX_BODY_BYTES, 65536, 1048576),
@@ -123,19 +133,38 @@ function verifyPayload(body, config, binding) {
   let data;
   try { data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)); }
   catch { throw new Refusal(400, 'invalid_event'); }
+  const fields = binding.valueFields ?? config.allowedValueFields;
   const keys = ['entity', 'recordId', 'revision', 'trigger', 'packageRevision', 'values'];
+  if (binding.trigger === 'request_lifecycle') keys.push('request');
   if (!object(data) || Object.keys(data).length !== keys.length || keys.some(key => !Object.hasOwn(data, key)) ||
-      data.entity !== config.expectedEntity || typeof data.recordId !== 'string' || !UUID.test(data.recordId) ||
+      data.entity !== (binding.entity ?? config.expectedEntity) || typeof data.recordId !== 'string' || !UUID.test(data.recordId) ||
       !Number.isSafeInteger(data.revision) || data.revision < 1 ||
       typeof data.packageRevision !== 'string' || !DIGEST.test(data.packageRevision) ||
-      !['created', 'patched'].includes(data.trigger) ||
+      !['created', 'patched', 'request_lifecycle'].includes(data.trigger) ||
       data.trigger !== binding.trigger || !object(data.values) ||
-      Object.keys(data.values).length !== config.allowedValueFields.length ||
-      config.allowedValueFields.some(field => !Object.hasOwn(data.values, field) ||
+      Object.keys(data.values).length !== fields.length ||
+      fields.some(field => !Object.hasOwn(data.values, field) ||
         typeof data.values[field] !== 'string' || Buffer.byteLength(data.values[field]) > 1024)) {
     throw new Refusal(400, 'invalid_event');
   }
+  if (binding.trigger === 'request_lifecycle') verifyLifecycle(data.request);
   return data;
+}
+
+function verifyLifecycle(value) {
+  const keys = ['proposalVersion', 'workflowRevision', 'transition', 'fromState', 'toState',
+    'stage', 'reasonPresent', 'effectDigest', 'deduplicationKey'];
+  const text = v => typeof v === 'string' && v.length > 0 && Buffer.byteLength(v) <= 128;
+  if (!object(value) || keys.some(key => !Object.hasOwn(value, key)) ||
+      Object.keys(value).some(key => !keys.includes(key) && key !== 'reason') ||
+      !['proposalVersion', 'workflowRevision'].every(key => Number.isSafeInteger(value[key]) && value[key] >= 1) ||
+      !['transition', 'fromState', 'toState'].every(key => text(value[key])) ||
+      !(value.stage === null || text(value.stage)) || typeof value.reasonPresent !== 'boolean' ||
+      !(value.effectDigest === null || (typeof value.effectDigest === 'string' && DIGEST.test(value.effectDigest))) ||
+      typeof value.deduplicationKey !== 'string' || !DIGEST.test(value.deduplicationKey) ||
+      (Object.hasOwn(value, 'reason') && (typeof value.reason !== 'string' || Buffer.byteLength(value.reason) > 8192))) {
+    throw new Refusal(400, 'invalid_event');
+  }
 }
 
 function forward(config, envelope) {
@@ -180,6 +209,7 @@ function respond(response, status, code) {
 }
 
 export function createBridge(config) {
+  const inbox = config.deliveryMode === 'cli' ? new DurableInbox(config.inboxPath) : undefined;
   const server = http.createServer({ maxHeaderSize: 16384 }, async (request, response) => {
     try {
       if (request.url === '/healthz' && request.method === 'GET') return respond(response, 200, 'ok');
@@ -192,15 +222,18 @@ export function createBridge(config) {
           !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) throw new Refusal(401, 'invalid_signature');
       const data = verifyPayload(body, config, binding);
       const h = request.headers;
-      await forward(config, {
+      const envelope = {
         event: Object.fromEntries(['specversion', 'id', 'source', 'type', 'time', 'dataschema'].map(key => [key, h[`ce-${key}`]])),
         delivery: { generation: Number(h['x-registry-event-generation']), attempt: Number(h['x-registry-delivery-attempt']),
           time: h['x-registry-delivery-time'], idempotencyKey: h['idempotency-key'] },
         data,
-      });
+      };
+      if (inbox) inbox.accept(envelope, binding.effect);
+      else await forward(config, envelope);
       respond(response, 202, 'accepted');
     } catch (error) { respond(response, error instanceof Refusal ? error.status : 503, error instanceof Refusal ? error.message : 'unavailable'); }
   });
+  if (inbox) server.on('close', () => inbox.close());
   server.requestTimeout = 10000;
   server.headersTimeout = 5000;
   return server;

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createBridge, loadConfig, EVENT_PATH, webhookSignature } from '../src/server.js';
+import { DurableInbox } from '../src/inbox.js';
 
 const key = Buffer.from('a-synthetic-hmac-key-at-least-32-bytes');
 const source = 'urn:registrystack:registry:agricultural-holdings:instance:pilot';
@@ -186,4 +187,35 @@ test('configuration uses exact secret bytes, explicit HTTP trust and safe errors
   assert.throws(() => loadConfig(env), /^Error: invalid bridge configuration$/);
   assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true' }).hmacKey.at(-1), 10);
   assert.throws(() => loadConfig({ ...env, OPENFN_WEBHOOK_URL: 'https://secret:canary@example.org/' }), /^Error: invalid bridge configuration$/);
+});
+
+
+test('CLI delivery authenticates before durable acceptance and handles lifecycle events without upstream work', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'bridge-durable-'));
+  const path = join(directory, 'inbox.sqlite');
+  const { url, calls } = await fixture(t, () => { throw new Error('CLI mode must not forward'); }, {
+    deliveryMode: 'cli', inboxPath: path,
+    expectedEvents: { 'farm-created-v1': { schema, trigger: 'request_lifecycle', effect: 'notify',
+      entity: 'correction-request', valueFields: ['record-reference'] } },
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const payload = { ...data, entity: 'correction-request', trigger: 'request_lifecycle',
+    values: { 'record-reference': 'synthetic-reference' },
+    request: { proposalVersion: 1, workflowRevision: 2, transition: 'request_revision',
+      fromState: 'submitted', toState: 'needs_changes', stage: 'review', reasonPresent: false,
+      effectDigest: `sha256:${'d'.repeat(64)}`, deduplicationKey: `sha256:${'e'.repeat(64)}` } };
+  const invalid = delivery({}, payload);
+  invalid.headers['x-registry-signature'] = `v1=${'x'.repeat(43)}`;
+  assert.equal((await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...invalid })).status, 401);
+  const persisted = new DurableInbox(path);
+  try {
+    assert.equal(persisted.status().length, 0);
+    for (const generation of ['1', '2']) {
+      const request = delivery({ 'x-registry-event-generation': generation }, payload);
+      assert.equal((await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...request })).status, 202);
+      assert.equal(persisted.status().length, 1, '202 means durable acceptance, even before worker starts');
+    }
+    assert.equal(calls.length, 0);
+    assert.equal(persisted.claim().envelope.data.request.toState, 'needs_changes');
+  } finally { persisted.close(); }
 });
