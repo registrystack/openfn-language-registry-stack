@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js",
-    "test": "node --test test/*.test.js"
+    "worker": "node src/worker.js",
+    "check": "node --check src/server.js && node --check src/inbox.js && node --check src/worker.js",
+    "test": "node --test test/*.test.js",
+    "test:cli": "node test/cli-journey.mjs"
   },
   "engines": { "node": ">=22.23.2" }
 }

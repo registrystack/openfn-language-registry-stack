@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createBridge, loadConfig, EVENT_PATH, webhookSignature } from '../src/server.js';
+import { DurableInbox } from '../src/inbox.js';
 
 const key = Buffer.from('a-synthetic-hmac-key-at-least-32-bytes');
 const source = 'urn:registrystack:registry:agricultural-holdings:instance:pilot';
@@ -29,7 +30,7 @@ function sign(headers, body, path = EVENT_PATH, method = 'POST') {
   return `v1=${createHmac('sha256', key).update(Buffer.concat(parts)).digest('base64url')}`;
 }
 
-function delivery(changes = {}, value = data) {
+function delivery(changes = {}, value = data, path = EVENT_PATH) {
   const body = Buffer.from(JSON.stringify(value));
   const headers = { 'content-type': 'application/json', 'ce-specversion': '1.0',
     'ce-id': '22222222-2222-4222-8222-222222222222', 'ce-source': source, 'ce-type': 'farm-created-v1',
@@ -37,7 +38,7 @@ function delivery(changes = {}, value = data) {
     'x-registry-event-generation': '1', 'x-registry-delivery-attempt': '1',
     'x-registry-delivery-time': new Date().toISOString(), 'idempotency-key': `sha256:${'c'.repeat(64)}`,
     ...changes };
-  headers['x-registry-signature'] = sign(headers, body);
+  headers['x-registry-signature'] = sign(headers, body, path);
   return { headers, body };
 }
 
@@ -84,6 +85,17 @@ test('forwards verified envelope only after real work-order acceptance; old even
   assert.equal(calls[0].data.event.source, source);
   assert.equal(calls[0].data.delivery.generation, 1);
   assert.equal(JSON.stringify(calls[0]).includes(key.toString()), false);
+});
+
+test('configured event path is exact and bound into the HMAC', async t => {
+  const eventPath = '/events/laboratory';
+  const { url, calls } = await fixture(t, undefined, { eventPath });
+  assert.equal((await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...delivery() })).status, 404);
+  assert.equal((await fetch(`${url}${eventPath}?other=1`, { method: 'POST', ...delivery({}, data, eventPath) })).status, 404);
+  assert.equal((await fetch(`${url}${eventPath}`, { method: 'POST', ...delivery() })).status, 401);
+  assert.equal(calls.length, 0);
+  assert.equal((await fetch(`${url}${eventPath}`, { method: 'POST', ...delivery({}, data, eventPath) })).status, 202);
+  assert.equal(calls.length, 1);
 });
 
 test('rejects body and every signed header tampering without upstream effects', async t => {
@@ -185,5 +197,41 @@ test('configuration uses exact secret bytes, explicit HTTP trust and safe errors
     BREG_EXPECTED_SOURCE: source, BREG_EXPECTED_ENTITY: 'farm', OPENFN_WEBHOOK_URL: 'http://openfn:4000/i/pilot' };
   assert.throws(() => loadConfig(env), /^Error: invalid bridge configuration$/);
   assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true' }).hmacKey.at(-1), 10);
+  assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_EVENT_PATH: '/events/laboratory' }).eventPath, '/events/laboratory');
+  assert.throws(() => loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_EVENT_PATH: '/events/laboratory?other=1' }),
+    /^Error: invalid bridge configuration$/);
   assert.throws(() => loadConfig({ ...env, OPENFN_WEBHOOK_URL: 'https://secret:canary@example.org/' }), /^Error: invalid bridge configuration$/);
+  await writeFile(join(dir, 'fields'), '[]');
+  assert.deepEqual(loadConfig({ ...env, ALLOW_HTTP: 'true' }).allowedValueFields, []);
+});
+
+
+test('CLI delivery authenticates before durable acceptance and handles lifecycle events without upstream work', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'bridge-durable-'));
+  const path = join(directory, 'inbox.sqlite');
+  const { url, calls } = await fixture(t, () => { throw new Error('CLI mode must not forward'); }, {
+    deliveryMode: 'cli', inboxPath: path,
+    expectedEvents: { 'farm-created-v1': { schema, trigger: 'request_lifecycle', effect: 'notify',
+      entity: 'correction-request', valueFields: ['record-reference'] } },
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const payload = { ...data, entity: 'correction-request', trigger: 'request_lifecycle',
+    values: { 'record-reference': 'synthetic-reference' },
+    request: { proposalVersion: 1, workflowRevision: 2, transition: 'request_revision',
+      fromState: 'submitted', toState: 'needs_changes', stage: 'review', reasonPresent: false,
+      effectDigest: `sha256:${'d'.repeat(64)}`, deduplicationKey: `sha256:${'e'.repeat(64)}` } };
+  const invalid = delivery({}, payload);
+  invalid.headers['x-registry-signature'] = `v1=${'x'.repeat(43)}`;
+  assert.equal((await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...invalid })).status, 401);
+  const persisted = new DurableInbox(path);
+  try {
+    assert.equal(persisted.status().length, 0);
+    for (const generation of ['1', '2']) {
+      const request = delivery({ 'x-registry-event-generation': generation }, payload);
+      assert.equal((await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...request })).status, 202);
+      assert.equal(persisted.status().length, 1, '202 means durable acceptance, even before worker starts');
+    }
+    assert.equal(calls.length, 0);
+    assert.equal(persisted.claim().envelope.data.request.toState, 'needs_changes');
+  } finally { persisted.close(); }
 });
