@@ -44,7 +44,7 @@ export function loadConfig(env = process.env) {
             binding.valueFields.some(field => typeof field !== 'string' || !field) ||
             new Set(binding.valueFields).size !== binding.valueFields.length)) ||
           (deliveryMode === 'cli' && (typeof binding.effect !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(binding.effect)))) ||
-        !Array.isArray(allowedValueFields) || allowedValueFields.length === 0 ||
+        !Array.isArray(allowedValueFields) ||
         allowedValueFields.some(field => typeof field !== 'string' || !field) ||
         new Set(allowedValueFields).size !== allowedValueFields.length ||
         (deliveryMode === 'cli' && (!env.OPENFN_INBOX_PATH || env.OPENFN_WEBHOOK_URL || env.OPENFN_API_KEY_FILE)) ||

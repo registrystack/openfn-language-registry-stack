@@ -187,6 +187,8 @@ test('configuration uses exact secret bytes, explicit HTTP trust and safe errors
   assert.throws(() => loadConfig(env), /^Error: invalid bridge configuration$/);
   assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true' }).hmacKey.at(-1), 10);
   assert.throws(() => loadConfig({ ...env, OPENFN_WEBHOOK_URL: 'https://secret:canary@example.org/' }), /^Error: invalid bridge configuration$/);
+  await writeFile(join(dir, 'fields'), '[]');
+  assert.deepEqual(loadConfig({ ...env, ALLOW_HTTP: 'true' }).allowedValueFields, []);
 });
 
 
