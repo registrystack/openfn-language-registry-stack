@@ -375,7 +375,13 @@ function requiredObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new OperationFailure("invalid_request", `${label}.object_required`);
   }
-  return value;
+  // OpenFn job literals live in a VM realm. Materialize the JSON-shaped input
+  // in this realm before the native facade applies its bounded JSON validator.
+  try {
+    return structuredClone(value);
+  } catch {
+    throw new OperationFailure("invalid_request", `${label}.object_required`);
+  }
 }
 
 function requiredRevision(value) {

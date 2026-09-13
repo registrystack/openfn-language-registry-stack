@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import vm from "node:vm";
 
 import * as adaptor from "../src/index.js";
 import {
@@ -223,6 +224,24 @@ test("Requester operations preserve exact keys, revisions and maintained method 
   assert.equal(result.data.input, "retained");
   assert.equal(result.data.terminal.branch, "succeeded");
   assert.equal(JSON.stringify(result.data).includes("synthetic-requester-secret"), false);
+});
+
+test("VM-authored nested display and query reach native operations as local JSON", async () => {
+  const { calls, operations } = fakeOperations();
+  const display = vm.runInNewContext('({ summary: "Reviewed", nested: { count: 2 } })');
+  const query = vm.runInNewContext('({ view: "my_teams", filters: { state: "open" } })');
+  await operations.createCaseworkItem({ kind: "example", requesterReference: "source-1",
+    display, idempotencyKey: "effect-1" })(state());
+  await operations.listCaseworkWorkItems({ sourceProfile: "reviewer", query })(state());
+  const createdDisplay = calls.find(([method]) => method === "createHostedItem")[4].display;
+  const listedQuery = calls.find(([method]) => method === "listWorkItems")[4];
+  assert.deepEqual(createdDisplay, { summary: "Reviewed", nested: { count: 2 } });
+  assert.equal(Object.getPrototypeOf(createdDisplay.nested), Object.prototype);
+  assert.deepEqual(listedQuery, { view: "my_teams", filters: { state: "open" } });
+  assert.equal(Object.getPrototypeOf(listedQuery.filters), Object.prototype);
+  const refused = await operations.createCaseworkItem({ kind: "example", requesterReference: "source-1",
+    display: new Proxy({}, {}), idempotencyKey: "effect-1" })(state());
+  assert.equal(refused.data.caseworkCreated.branch, "invalid_request");
 });
 
 test("terminal cursor expiry is typed, redacted and never retried silently", async () => {
