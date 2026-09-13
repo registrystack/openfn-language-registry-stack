@@ -12,11 +12,14 @@ export function loadWorkerConfig(env = process.env) {
     if (!workflows || Array.isArray(workflows) || typeof workflows !== 'object' ||
         !Object.keys(workflows).length || !env.OPENFN_INBOX_PATH) throw new Error();
     for (const [effect, binding] of Object.entries(workflows)) {
+      const adaptors = binding?.adaptors ?? (binding?.adaptor ? [binding.adaptor] : []);
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(effect) || !binding ||
           typeof binding.job !== 'string' || !binding.job ||
-          typeof binding.adaptor !== 'string' || !binding.adaptor ||
+          (binding.adaptor !== undefined && binding.adaptors !== undefined) ||
+          !Array.isArray(adaptors) || adaptors.length === 0 ||
+          adaptors.some(adaptor => typeof adaptor !== 'string' || !adaptor) ||
           (binding.configurationFile !== undefined && typeof binding.configurationFile !== 'string') ||
-          Object.keys(binding).some(key => !['job', 'adaptor', 'configurationFile'].includes(key))) throw new Error();
+          Object.keys(binding).some(key => !['job', 'adaptor', 'adaptors', 'configurationFile'].includes(key))) throw new Error();
       binding.job = resolve(dirname(workflowsPath), binding.job);
       if (binding.configurationFile) binding.configurationFile = resolve(dirname(workflowsPath), binding.configurationFile);
     }
@@ -41,7 +44,8 @@ export async function runCli(item, config) {
     await new Promise((resolveRun, rejectRun) => {
       // Reviewed executable/job/adaptor paths only. Event data never becomes
       // shell syntax, CLI arguments, a job name, or log output.
-      const child = spawn(config.binary, [binding.job, '-a', binding.adaptor,
+      const adaptors = binding.adaptors ?? [binding.adaptor];
+      const child = spawn(config.binary, [binding.job, ...adaptors.flatMap(adaptor => ['-a', adaptor]),
         '-s', state, '-o', output, '--no-cache-steps',
         '--no-autoinstall', '--no-expand-adaptors', '--repo-dir', join(directory, 'repo'),
         '--timeout', String(config.timeoutMs)],

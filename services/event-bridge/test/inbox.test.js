@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { DurableInbox } from '../src/inbox.js';
-import { runOnce, runCli } from '../src/worker.js';
+import { loadWorkerConfig, runOnce, runCli } from '../src/worker.js';
 
 const envelope = { event: { source: 'urn:synthetic:registry', id: 'event-1' },
   delivery: { generation: 1 }, data: { values: { reference: 'synthetic-record' } } };
@@ -121,4 +121,19 @@ test('CLI handoff uses protected state files, bounds execution and removes trans
   await writeFile(executable, `#!${process.execPath}\nsetInterval(()=>{},1000);`);
   await assert.rejects(runCli({ effect: 'notify', id: 'synthetic', envelope }, { ...config, timeoutMs: 100 }));
   assert.equal((await readdir(directory)).some(file => file.startsWith('attempt-')), false);
+});
+
+test('reviewed workflow configuration binds one or several exact adaptor paths without ambiguity', async t => {
+  const { path, directory } = await fixture(t);
+  const file = join(directory, 'workflows.json');
+  const env = { OPENFN_INBOX_PATH: path, OPENFN_WORKFLOWS_FILE: file };
+  const binding = { job: './job.js', adaptors: ['evidence=/installed/evidence', 'casework=/installed/casework'] };
+  await writeFile(file, JSON.stringify({ intake: binding }));
+  const config = loadWorkerConfig(env);
+  assert.equal(config.workflows.intake.job, join(directory, 'job.js'));
+  assert.deepEqual(config.workflows.intake.adaptors, binding.adaptors);
+  await writeFile(file, JSON.stringify({ intake: { ...binding, adaptor: 'common=/installed/common' } }));
+  assert.throws(() => loadWorkerConfig(env), /invalid worker configuration/);
+  await writeFile(file, JSON.stringify({ intake: { ...binding, adaptors: [] } }));
+  assert.throws(() => loadWorkerConfig(env), /invalid worker configuration/);
 });

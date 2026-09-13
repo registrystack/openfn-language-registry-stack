@@ -114,7 +114,9 @@ The worker uses the same `OPENFN_INBOX_PATH` and a reviewed
 ```
 
 Job and configuration paths resolve relative to this file. Use an absolute
-installed adaptor path as shown. `configurationFile` is optional. Pin the CLI
+installed adaptor path as shown. `configurationFile` is optional. Use
+`adaptors: ["package=/path", "second-package=/path"]` instead of `adaptor`
+when a job composes two or more adaptors; never set both forms. Pin the CLI
 and adaptors at installation; execution disables automatic installation and
 adaptor-name expansion. `OPENFN_BINARY` selects the installed CLI executable
 (default `openfn`). `OPENFN_JOB_TIMEOUT_MS` defaults to 60000, maximum 1800000.
