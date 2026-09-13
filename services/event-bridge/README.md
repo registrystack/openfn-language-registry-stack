@@ -5,7 +5,9 @@ workflow to a durable inbox or submitting a work order to a fixed OpenFn webhook
 dependencies. Start with `node services/event-bridge/src/server.js` from the
 repository root.
 
-`POST /events/breg` is the only ingress route. The method, path without query,
+`POST /events/breg` is the default ingress route. Set `BREG_EVENT_PATH` to one
+fixed `/events/<name>` path when an authored BREG destination uses another
+route. The method, exact path without query,
 content type, all signed headers, and bounded exact body bytes are covered by
 the BREG `breg-webhook-signature-v1` HMAC contract: unsigned 64-bit big-endian
 byte lengths precede each field in the order defined in Registry Stack's
@@ -29,6 +31,7 @@ Configuration is required unless a default is listed:
 | --- | --- |
 | `BREG_HMAC_KEY_FILE` | File containing exact HMAC key bytes, at least 32 bytes. |
 | `BREG_EXPECTED_SOURCE` | Exact CloudEvent source for the registry instance. |
+| `BREG_EVENT_PATH` | Optional exact signed ingress path, default `/events/breg`; one lowercase name under `/events/`, with letters, digits or hyphens. |
 | `BREG_EXPECTED_ENTITY` | Exact payload entity, `farm` for this pilot. |
 | `BREG_EXPECTED_EVENTS_FILE` | JSON object mapping each exact type to `{ "schema": "exact-dataschema", "trigger": "created" }`; `patched` and `request_lifecycle` are also supported. Optional per-event `entity` and `valueFields` override defaults; CLI mode requires `effect`. |
 | `BREG_ALLOWED_VALUE_FIELDS_FILE` | JSON array of exact projected string fields, `["local-identifier"]` for this pilot. |

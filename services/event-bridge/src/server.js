@@ -28,13 +28,15 @@ function positive(value, fallback, maximum) {
 export function loadConfig(env = process.env) {
   try {
     const hmacKey = readFileSync(env.BREG_HMAC_KEY_FILE);
+    const eventPath = env.BREG_EVENT_PATH ?? EVENT_PATH;
     const deliveryMode = env.OPENFN_DELIVERY_MODE ?? 'webhook';
     if (!['webhook', 'cli'].includes(deliveryMode)) throw new Error('invalid delivery mode');
     const apiKey = deliveryMode === 'webhook' ? readFileSync(env.OPENFN_API_KEY_FILE, 'utf8') : undefined;
     const expectedEvents = JSON.parse(readFileSync(env.BREG_EXPECTED_EVENTS_FILE, 'utf8'));
     const allowedValueFields = JSON.parse(readFileSync(env.BREG_ALLOWED_VALUE_FIELDS_FILE, 'utf8'));
     const url = deliveryMode === 'webhook' ? new URL(env.OPENFN_WEBHOOK_URL) : undefined;
-    if (hmacKey.length < 32 || (apiKey !== undefined && !/^[\x21-\x7e]+$/.test(apiKey)) ||
+    if (hmacKey.length < 32 || !/^\/events\/[a-z0-9][a-z0-9-]{0,63}$/.test(eventPath) ||
+        (apiKey !== undefined && !/^[\x21-\x7e]+$/.test(apiKey)) ||
         !env.BREG_EXPECTED_SOURCE || !env.BREG_EXPECTED_ENTITY ||
         !object(expectedEvents) || Object.keys(expectedEvents).length === 0 ||
         Object.entries(expectedEvents).some(([type, binding]) => !type || !object(binding) ||
@@ -56,6 +58,7 @@ export function loadConfig(env = process.env) {
       hmacKey, apiKey, expectedEvents, allowedValueFields, deliveryMode,
       inboxPath: env.OPENFN_INBOX_PATH,
       expectedSource: env.BREG_EXPECTED_SOURCE, expectedEntity: env.BREG_EXPECTED_ENTITY,
+      eventPath,
       openfnUrl: url, port: positive(env.PORT, 8081, 65535),
       maxBodyBytes: positive(env.MAX_BODY_BYTES, 65536, 1048576),
       maxDeliverySkewSeconds: positive(env.MAX_DELIVERY_SKEW_SECONDS, 300, 3600),
@@ -210,14 +213,15 @@ function respond(response, status, code) {
 
 export function createBridge(config) {
   const inbox = config.deliveryMode === 'cli' ? new DurableInbox(config.inboxPath) : undefined;
+  const eventPath = config.eventPath ?? EVENT_PATH;
   const server = http.createServer({ maxHeaderSize: 16384 }, async (request, response) => {
     try {
       if (request.url === '/healthz' && request.method === 'GET') return respond(response, 200, 'ok');
-      if (request.url !== EVENT_PATH || request.method !== 'POST') return respond(response, 404, 'not_found');
+      if (request.url !== eventPath || request.method !== 'POST') return respond(response, 404, 'not_found');
       const binding = verifyHeaders(request, config);
       const body = await readBody(request, config.maxBodyBytes);
       const provided = request.headers['x-registry-signature'];
-      const expected = webhookSignature(config.hmacKey, request.headers, body);
+      const expected = webhookSignature(config.hmacKey, request.headers, body, 'POST', eventPath);
       if (!/^v1=[A-Za-z0-9_-]{43}$/.test(provided) ||
           !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) throw new Refusal(401, 'invalid_signature');
       const data = verifyPayload(body, config, binding);
