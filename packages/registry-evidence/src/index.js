@@ -84,7 +84,9 @@ export function prepareEvidenceRequest(state, options = {}) {
       throw new EvidenceCallerError("request options do not match the configured client mode", { code: "configuration.request_mode" });
     }
     const client = profileMode
-      ? EvidenceClient.fromProfile(clientConfig.profilePath, clientConfig.privateKeyJwk)
+      ? clientConfig.authorization === undefined
+        ? EvidenceClient.fromProfile(clientConfig.profilePath, clientConfig.privateKeyJwk)
+        : EvidenceClient.fromProfileWithAuthorization(clientConfig.profilePath, clientConfig.authorization)
       : new EvidenceClient(clientConfig);
     const progressive = profileMode ? resolveInputValue(state, {
       requirement: options.requirement,
@@ -118,6 +120,7 @@ export async function callEvidence(state, request) {
         requirement: request.requirement,
         assertion: verified.evidence,
         jws: verified.assertion.toString("utf8"),
+        retained_verification: verified.retainedVerification.toString("base64"),
         subject_continuity: verified.subjectContinuity,
         verification: { authentic: true, currently_valid: true, policy_satisfied: true },
       });
@@ -284,7 +287,8 @@ function evidenceConfiguration(configuration) {
       throw new EvidenceCallerError("configure evidence or legacy Evidence fields, never both", { code: "configuration.authentication" });
     }
     const config = parseConfigurationJson(configuration.evidence, "configuration.evidence");
-    if (config.profilePath !== undefined && Object.keys(config).some((key) => !["profilePath", "privateKeyJwk"].includes(key))) {
+    if (config.profilePath !== undefined && (Object.keys(config).some((key) => !["profilePath", "privateKeyJwk", "authorization"].includes(key))
+      || (config.privateKeyJwk !== undefined && config.authorization !== undefined))) {
       throw new EvidenceCallerError("profilePath cannot be combined with explicit client settings", { code: "configuration.profile" });
     }
     return config;

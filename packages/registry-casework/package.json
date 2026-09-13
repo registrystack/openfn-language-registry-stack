@@ -1,7 +1,7 @@
 {
-  "name": "@openfn/language-registry-breg",
+  "name": "@openfn/language-registry-casework",
   "version": "0.1.0",
-  "description": "OpenFn operations for Registry Stack Base Registry Engine.",
+  "description": "OpenFn operations for Registry Casework hosted intake and task grants.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.js",
@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "test": "node --experimental-vm-modules --no-warnings --test test/*.test.js",
-    "check": "node --check src/index.js && node --check src/native.cjs && node --check jobs/read-and-patch.js && node --check jobs/create-and-submit.js && npm test",
+    "check": "node --check src/index.js && node --check src/operations.js && node --check jobs/create-request.js && node --check jobs/poll-terminal-results.js && npm test",
     "pack:dry-run": "npm pack --dry-run"
   },
   "engines": {

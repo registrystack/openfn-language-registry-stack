@@ -12,7 +12,7 @@ as:
 
 ## Client packaging
 
-This package pins `@registrystack/client` to **0.27.0** and uses its `evidence`
+This package pins `@registrystack/client` to **0.32.0** and uses its `evidence`
 namespace. Supported native targets are macOS arm64, Linux amd64 glibc, and
 Linux arm64 glibc. Alpine/musl is unsupported. Use a glibc OpenFn worker image.
 
@@ -146,8 +146,15 @@ A verified result includes `subject_continuity: { status, receipt }` with status
 `firstUse` or `matched`. Persist the opaque receipt and pass it on the next call.
 The native SDK validates receipt scope and subject continuity. Profile mode
 accepts `requirement`, `selectors` or role-mapped `subjects`, and `bindingReceipt`;
-full explicit policy fields belong to the explicit API above. Both modes request
-signed JWS only, retain its exact bytes, and publish no native handles.
+full explicit policy fields belong to the explicit API above. The reviewed
+profile closes definition-specific expectations before sending. Both modes
+request signed JWS only, retain its exact bytes, and publish no native handles.
+Progressive success also returns `retained_verification` as base64 of the native
+verification snapshot; persist it with the signed bytes when audit retention
+is required. A profile can use `authorization: { exchange: ... }` instead of
+`privateKeyJwk`. The native client's remote exchange source binds the Casework
+grant assertion and exchanges it without placing a short-lived assertion in
+workflow data.
 
 ## Failure branches
 

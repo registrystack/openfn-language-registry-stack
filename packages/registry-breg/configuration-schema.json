@@ -10,7 +10,8 @@
     "authorization": {
       "oneOf": [
         { "type": "object", "additionalProperties": false, "required": ["static"], "properties": { "static": { "type": "string", "minLength": 1, "writeOnly": true, "format": "password", "description": "Bearer token without the Bearer prefix." } } },
-        { "type": "object", "additionalProperties": false, "required": ["privateKeyJwt"], "properties": { "privateKeyJwt": { "$ref": "#/$defs/privateKeyJwt" } } }
+        { "type": "object", "additionalProperties": false, "required": ["privateKeyJwt"], "properties": { "privateKeyJwt": { "$ref": "#/$defs/privateKeyJwt" } } },
+        { "type": "object", "additionalProperties": false, "required": ["exchange"], "properties": { "exchange": { "type": "object", "writeOnly": true, "description": "Native Registry client exchange authorization with reviewed context and firstParty or remote source." } } }
       ]
     },
     "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
@@ -29,6 +30,8 @@
         "clientId": { "type": "string", "minLength": 1 },
         "clientKey": { "type": "object", "writeOnly": true, "required": ["kty", "kid", "alg"], "properties": { "kty": { "type": "string" }, "kid": { "type": "string" }, "alg": { "type": "string" } }, "additionalProperties": true },
         "audience": { "type": "string" },
+        "resource": { "type": "string" },
+        "scopes": { "type": "array", "items": { "type": "string" } },
         "assertionLifetimeSeconds": { "type": "integer", "minimum": 1 },
         "refreshMarginSeconds": { "type": "integer", "minimum": 0 },
         "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1 },

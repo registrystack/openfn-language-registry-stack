@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Registry Casework Requester",
+  "description": "Place this object in configuration.casework. The Requester credential remains in OpenFn configuration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["baseUrl", "profile"],
+  "oneOf": [{ "required": ["token"] }, { "required": ["authorization"] }],
+  "properties": {
+    "baseUrl": {
+      "type": "string",
+      "format": "uri",
+      "maxLength": 2048,
+      "description": "Registry Casework deployment URL, including any reverse-proxy prefix."
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "writeOnly": true,
+      "format": "password",
+      "description": "Requester bearer token without the Bearer prefix."
+    },
+    "authorization": {
+      "type": "object",
+      "writeOnly": true,
+      "additionalProperties": false,
+      "required": ["privateKeyJwt"],
+      "properties": {
+        "privateKeyJwt": {
+          "type": "object",
+          "required": ["tokenEndpoint", "clientId", "clientKey", "resource", "scopes"],
+          "properties": {
+            "tokenEndpoint": { "type": "string", "format": "uri" },
+            "clientId": { "type": "string" },
+            "clientKey": { "type": "object", "writeOnly": true },
+            "resource": { "type": "string" },
+            "scopes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Configured Casework Requester profile bound to this credential."
+    },
+    "requestTimeoutMilliseconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "connectTimeoutMilliseconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxResponseBytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "userAgent": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "trustedRootCertificates": {
+      "type": "string",
+      "maxLength": 262144,
+      "description": "PEM trust roots for the Registry Casework HTTPS connection."
+    }
+  }
+}
