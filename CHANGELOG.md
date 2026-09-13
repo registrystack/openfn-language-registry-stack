@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- The event bridge accepts `BREG_BIND_HOST=127.0.0.1` for host-local receivers.
+  Its existing `0.0.0.0` default remains unchanged.
+
 ### Removed
 
 - Removed the Relay v1 adaptor (`@openfn/language-registry-relay`), its
