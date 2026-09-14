@@ -198,6 +198,10 @@ test('configuration uses exact secret bytes, explicit HTTP trust and safe errors
   assert.throws(() => loadConfig(env), /^Error: invalid bridge configuration$/);
   assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true' }).hmacKey.at(-1), 10);
   assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_EVENT_PATH: '/events/laboratory' }).eventPath, '/events/laboratory');
+  assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true' }).bindHost, '0.0.0.0');
+  assert.equal(loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_BIND_HOST: '127.0.0.1' }).bindHost, '127.0.0.1');
+  assert.throws(() => loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_BIND_HOST: 'example.com' }),
+    /^Error: invalid bridge configuration$/);
   assert.throws(() => loadConfig({ ...env, ALLOW_HTTP: 'true', BREG_EVENT_PATH: '/events/laboratory?other=1' }),
     /^Error: invalid bridge configuration$/);
   assert.throws(() => loadConfig({ ...env, OPENFN_WEBHOOK_URL: 'https://secret:canary@example.org/' }), /^Error: invalid bridge configuration$/);

@@ -29,6 +29,7 @@ export function loadConfig(env = process.env) {
   try {
     const hmacKey = readFileSync(env.BREG_HMAC_KEY_FILE);
     const eventPath = env.BREG_EVENT_PATH ?? EVENT_PATH;
+    const bindHost = env.BREG_BIND_HOST ?? '0.0.0.0';
     const deliveryMode = env.OPENFN_DELIVERY_MODE ?? 'webhook';
     if (!['webhook', 'cli'].includes(deliveryMode)) throw new Error('invalid delivery mode');
     const apiKey = deliveryMode === 'webhook' ? readFileSync(env.OPENFN_API_KEY_FILE, 'utf8') : undefined;
@@ -36,6 +37,7 @@ export function loadConfig(env = process.env) {
     const allowedValueFields = JSON.parse(readFileSync(env.BREG_ALLOWED_VALUE_FIELDS_FILE, 'utf8'));
     const url = deliveryMode === 'webhook' ? new URL(env.OPENFN_WEBHOOK_URL) : undefined;
     if (hmacKey.length < 32 || !/^\/events\/[a-z0-9][a-z0-9-]{0,63}$/.test(eventPath) ||
+        !['0.0.0.0', '127.0.0.1'].includes(bindHost) ||
         (apiKey !== undefined && !/^[\x21-\x7e]+$/.test(apiKey)) ||
         !env.BREG_EXPECTED_SOURCE || !env.BREG_EXPECTED_ENTITY ||
         !object(expectedEvents) || Object.keys(expectedEvents).length === 0 ||
@@ -58,7 +60,7 @@ export function loadConfig(env = process.env) {
       hmacKey, apiKey, expectedEvents, allowedValueFields, deliveryMode,
       inboxPath: env.OPENFN_INBOX_PATH,
       expectedSource: env.BREG_EXPECTED_SOURCE, expectedEntity: env.BREG_EXPECTED_ENTITY,
-      eventPath,
+      eventPath, bindHost,
       openfnUrl: url, port: positive(env.PORT, 8081, 65535),
       maxBodyBytes: positive(env.MAX_BODY_BYTES, 65536, 1048576),
       maxDeliverySkewSeconds: positive(env.MAX_DELIVERY_SKEW_SECONDS, 300, 3600),
@@ -248,7 +250,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const config = loadConfig();
     const server = createBridge(config);
     server.on('error', () => { process.stderr.write('bridge unavailable\n'); process.exitCode = 1; });
-    server.listen(config.port, '0.0.0.0');
+    server.listen(config.port, config.bindHost);
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close());
   } catch { process.stderr.write('invalid bridge configuration\n'); process.exitCode = 1; }
 }
