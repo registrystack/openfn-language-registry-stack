@@ -12,9 +12,11 @@ an isolated local pilot.
 The maintained pilot uses:
 
 - [Registry Evidence adaptor](packages/registry-evidence), using the `evidence`
-  namespace of the published `@registrystack/client@0.27.0`.
+  namespace of the published `@registrystack/client@0.32.0`.
 - [Registry BREG adaptor](packages/registry-breg), using the same package's `breg`
   namespace for metadata-selected writes, exact lookups and lifecycle actions.
+- [Registry Casework adaptor](packages/registry-casework), using the same package's
+  `casework` namespace for hosted intake, requester polling and task grants.
 - Upstream Lightning 2.18.2 and websocket worker 1.29.0, packaged with Node
   24.19.0 on glibc and local adaptors. No OpenFn source patch is required.
 - Separate BREG and Lightning PostgreSQL databases, Mint, Evidence, an

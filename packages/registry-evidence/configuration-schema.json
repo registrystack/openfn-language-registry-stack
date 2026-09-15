@@ -64,6 +64,10 @@
           }
         },
         {
+          "required": ["baseUrl", "trustedJwks", "revokedKeyIds", "authorization"],
+          "not": { "anyOf": [{ "required": ["token"] }, { "required": ["profilePath"] }] }
+        },
+        {
           "required": [
             "profilePath"
           ],
@@ -74,6 +78,10 @@
               "minLength": 1
             },
             "privateKeyJwk": {
+              "type": "object",
+              "writeOnly": true
+            },
+            "authorization": {
               "type": "object",
               "writeOnly": true
             }
@@ -152,6 +160,11 @@
               }
             }
           ]
+        },
+        "authorization": {
+          "type": "object",
+          "writeOnly": true,
+          "description": "Native Registry client exchange authorization; mutually exclusive with token."
         }
       }
     }

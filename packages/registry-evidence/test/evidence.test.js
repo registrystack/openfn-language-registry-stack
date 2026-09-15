@@ -429,6 +429,8 @@ test("profile requests verify first-use and matched receipts and refuse subject 
     assert.equal(second.data.evidence.subject_continuity.status, "matched");
     assert.equal(second.data.evidence.trace_id, TRACE_ID);
     assert.equal(typeof second.data.evidence.jws, "string");
+    assert.equal(typeof second.data.evidence.retained_verification, "string");
+    assert.ok(Buffer.from(second.data.evidence.retained_verification, "base64").length > 0);
     binding = TEMPLATE_SUBJECT_BINDING;
     await assert.rejects(requestEvidence({ ...options, bindingReceipt: receipt })(input()), { name: "EvidenceCallerError" });
     assert.equal(stub.requests.filter(request => request.url === "/v1/evidence").length, 3);
