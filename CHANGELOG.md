@@ -6,6 +6,14 @@
 
 - The event bridge accepts `BREG_BIND_HOST=127.0.0.1` for host-local receivers.
   Its existing `0.0.0.0` default remains unchanged.
+- `@openfn/language-registry-casework` wraps the native Casework client for
+  requester operations on hosted items and task operations on source inboxes
+  and grants.
+
+### Changed
+
+- The Evidence, BREG and Casework adaptors pin `@registrystack/client` 0.32.0.
+  The pilot's Registry Stack images and bootstrap tools remain at 0.27.0.
 
 ### Removed
 

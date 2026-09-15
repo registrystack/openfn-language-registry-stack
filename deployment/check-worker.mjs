@@ -11,7 +11,7 @@ const require = createRequire('/opt/registry-adaptors/package.json');
 const client = require('@registrystack/client');
 assert.equal(typeof client.evidence.EvidenceClient, 'function');
 new client.breg.BaseRegistryClient({ baseUrl: 'http://127.0.0.1:8090' });
-assert.equal(JSON.parse(readFileSync('/opt/registry-adaptors/node_modules/@registrystack/client/package.json')).version, '0.27.0');
+assert.equal(JSON.parse(readFileSync('/opt/registry-adaptors/node_modules/@registrystack/client/package.json')).version, '0.32.0');
 assert.ok(process.report.getReport().header.glibcVersionRuntime, 'worker must use glibc');
 const { default: compile, preloadAdaptorExports } = await import('/app/packages/compiler/dist/index.js');
 const { default: run } = await import('/app/packages/runtime/dist/index.js');
