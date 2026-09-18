@@ -9,6 +9,15 @@
 - `@openfn/language-registry-casework` wraps the native Casework client for
   requester operations on hosted items and task operations on source inboxes
   and grants.
+- `createCaseworkItem` in `@openfn/language-registry-casework` accepts an
+  optional `resultConstraints` object keyed by the kind's result-schema field
+  names and forwards it verbatim for server-side validation.
+  `pollCaseworkResults` surfaces the structured `result` on completed items
+  when the server returns one and stays valid when it does not. The pinned
+  0.32.0 client cannot carry these fields yet (closed request and response
+  types); constraints-in and result-out go live with the coordinated client
+  release and pin bump, and until then a caller passing `resultConstraints`
+  receives the client's own `invalid_request` before any HTTP request.
 
 ### Changed
 

@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import compile from "@openfn/compiler";
 import run from "@openfn/runtime";
-import { createCaseworkItem, getCaseworkItem, listCaseworkWorkItems, approveCaseworkTaskGrant } from "../src/index.js";
+import { createCaseworkItem, getCaseworkItem, listCaseworkWorkItems, approveCaseworkTaskGrant, pollCaseworkResults } from "../src/index.js";
 
 test("real native Casework client creates hosted intake and preserves task authority", async (context) => {
   const requests = [];
@@ -55,6 +55,58 @@ test("real native Casework client creates hosted intake and preserves task autho
   assert.equal(requests[3].headers["idempotency-key"], "event-42:create");
   assert.equal("configuration" in runtime, false);
   assert.equal(JSON.stringify(runtime).includes("synthetic-token"), false);
+});
+
+test("terminal poll stays valid when a completed item carries no structured result", async (context) => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+    res.writeHead(200, { "content-type": "application/json", traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" });
+    res.end(JSON.stringify({ items: [{ itemId: "00000000-0000-4000-8000-000000000001", eventId: "00000000-0000-4000-8000-00000000000a",
+      requesterReference: "event-42", kindPolicyDigest: `sha256:${"a".repeat(64)}`, terminalAt: "2026-09-11T00:00:00Z",
+      state: "completed", outcome: "confirmed", actorRef: "actor_staff-1" }], status: "complete" }));
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  context.after(() => new Promise(resolve => server.close(resolve)));
+  const state = { configuration: { casework: { baseUrl: `http://127.0.0.1:${server.address().port}/`, token: "synthetic-token", profile: "requester" } }, data: {} };
+  const polled = await pollCaseworkResults({ limit: 25 })(state);
+  assert.equal(polled.data.caseworkTerminal.branch, "succeeded", JSON.stringify(polled.data.caseworkTerminal));
+  assert.equal(requests[0].url, "/v1/hosted-items/terminal?limit=25");
+  assert.equal(requests[0].headers.authorization, "Bearer synthetic-token");
+  const [item] = polled.data.caseworkTerminal.value.items;
+  assert.deepEqual(item, { itemId: "00000000-0000-4000-8000-000000000001", eventId: "00000000-0000-4000-8000-00000000000a",
+    requesterReference: "event-42", kindPolicyDigest: `sha256:${"a".repeat(64)}`, terminalAt: "2026-09-11T00:00:00Z",
+    state: "completed", outcome: "confirmed", actorRef: "actor_staff-1" });
+  assert.equal("result" in item, false);
+});
+
+// Pin limitation, not a permanent expectation: @registrystack/client 0.32.0
+// refuses resultConstraints client-side (closed HostedCreateRequest), so the
+// caller error must fail closed with no HTTP traffic. This test fails once the
+// coordinated client bump lands and must be replaced by a wire assertion then.
+test("createCaseworkItem resultConstraints fails closed until the client release carries the field", async (context) => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+    res.writeHead(req.method === "POST" && req.url === "/v1/hosted-items" ? 201 : 200,
+      { "content-type": "application/json", traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" });
+    res.end(JSON.stringify({ itemId: "00000000-0000-4000-8000-000000000001", requesterReference: "event-42",
+      kind: "batch-validation", version: "2", display: { summary: "Batch 42" }, state: "open", revision: 1,
+      kindPolicyDigest: `sha256:${"a".repeat(64)}`, createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" }));
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  context.after(() => new Promise(resolve => server.close(resolve)));
+  const state = { configuration: { casework: { baseUrl: `http://127.0.0.1:${server.address().port}/`, token: "synthetic-token", profile: "requester" } }, data: {} };
+  const refused = await createCaseworkItem({ kind: "batch-validation", requesterReference: "event-42",
+    display: { summary: "Batch 42" }, resultConstraints: { acceptedCount: { minimum: 0, maximum: 412 } },
+    idempotencyKey: "event-42:create" })(state);
+  assert.equal(refused.data.caseworkCreated.branch, "invalid_request", JSON.stringify(refused.data.caseworkCreated));
+  assert.equal(refused.data.caseworkCreated.problem.code, "casework.invalid_request");
+  assert.equal(requests.length, 0);
 });
 
 test("Casework service credential is minted by the native provider before one read", async (context) => {

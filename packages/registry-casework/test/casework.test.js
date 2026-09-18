@@ -244,6 +244,115 @@ test("VM-authored nested display and query reach native operations as local JSON
   assert.equal(refused.data.caseworkCreated.branch, "invalid_request");
 });
 
+test("createCaseworkItem forwards resultConstraints verbatim inside the create request", async () => {
+  const { calls, operations } = fakeOperations();
+  const resultConstraints = vm.runInNewContext(
+    '({ batchStatus: { oneOf: [{ const: "valid", title: "All rows valid" }] }, acceptedCount: { minimum: 0, maximum: 412 } })',
+  );
+  const result = await operations.createCaseworkItem({
+    kind: "batch-validation",
+    requesterReference: "batch-0042",
+    display: { summary: "Batch 42" },
+    resultConstraints,
+    idempotencyKey: "create-key-constraints-001",
+    as: "created",
+  })(state());
+  assert.equal(result.data.created.branch, "succeeded");
+  const request = calls.find(([method]) => method === "createHostedItem")[4];
+  assert.deepEqual(request, {
+    kind: "batch-validation",
+    requesterReference: "batch-0042",
+    display: { summary: "Batch 42" },
+    resultConstraints: {
+      batchStatus: { oneOf: [{ const: "valid", title: "All rows valid" }] },
+      acceptedCount: { minimum: 0, maximum: 412 },
+    },
+  });
+  assert.equal(Object.getPrototypeOf(request.resultConstraints), Object.prototype);
+  assert.equal(
+    Object.getPrototypeOf(request.resultConstraints.batchStatus),
+    Object.prototype,
+  );
+});
+
+test("createCaseworkItem without resultConstraints sends exactly the three closed fields", async () => {
+  const { calls, operations } = fakeOperations();
+  const result = await operations.createCaseworkItem({
+    kind: "decision",
+    requesterReference: "batch-0043",
+    display: { summary: "Batch 43" },
+    idempotencyKey: "create-key-constraints-002",
+  })(state());
+  assert.equal(result.data.caseworkCreated.branch, "succeeded");
+  const request = calls.find(([method]) => method === "createHostedItem")[4];
+  assert.deepEqual(request, {
+    kind: "decision",
+    requesterReference: "batch-0043",
+    display: { summary: "Batch 43" },
+  });
+  assert.equal("resultConstraints" in request, false);
+});
+
+test("a non-object resultConstraints fails pre-flight and makes no client call", async () => {
+  const { calls, operations } = fakeOperations();
+  const before = calls.length;
+  for (const resultConstraints of ["batchStatus:valid", [{ oneOf: [{ const: "valid" }] }]]) {
+    const result = await operations.createCaseworkItem({
+      kind: "batch-validation",
+      requesterReference: "batch-0042",
+      display: { summary: "Batch 42" },
+      resultConstraints,
+      idempotencyKey: "create-key-constraints-003",
+    })(state());
+    assert.equal(result.data.caseworkCreated.branch, "invalid_request");
+    assert.equal(
+      result.data.caseworkCreated.problem.code,
+      "resultConstraints.object_required",
+    );
+  }
+  assert.equal(calls.length, before);
+});
+
+test("terminal results surface completed items with and without a structured result", async () => {
+  const completed = {
+    eventId: "event-with-result",
+    state: "completed",
+    outcome: "confirmed",
+    actorRef: "actor_staff-1",
+    result: { batchStatus: "partial", acceptedCount: 400 },
+  };
+  const withResult = fakeOperations({
+    hostedTerminalItems: () => ({
+      kind: "complete",
+      value: { items: [completed], status: "complete" },
+    }),
+  });
+  const surfaced = await withResult.operations.pollCaseworkResults({ limit: 25 })(
+    state(),
+  );
+  assert.equal(surfaced.data.caseworkTerminal.branch, "succeeded");
+  assert.deepEqual(surfaced.data.caseworkTerminal.value.items[0], completed);
+  assert.deepEqual(surfaced.data.caseworkTerminal.value.items[0].result, {
+    batchStatus: "partial",
+    acceptedCount: 400,
+  });
+
+  const withoutResult = { ...completed };
+  delete withoutResult.result;
+  const absent = fakeOperations({
+    hostedTerminalItems: () => ({
+      kind: "complete",
+      value: { items: [withoutResult], status: "complete" },
+    }),
+  });
+  const tolerated = await absent.operations.pollCaseworkResults({ limit: 25 })(
+    state(),
+  );
+  assert.equal(tolerated.data.caseworkTerminal.branch, "succeeded");
+  assert.deepEqual(tolerated.data.caseworkTerminal.value.items[0], withoutResult);
+  assert.equal("result" in tolerated.data.caseworkTerminal.value.items[0], false);
+});
+
 test("terminal cursor expiry is typed, redacted and never retried silently", async () => {
   let attempts = 0;
   const { operations } = fakeOperations({
@@ -353,6 +462,33 @@ test("typed conflicts and validation expose only bounded diagnostics", async () 
   });
   assert.equal(JSON.stringify(result).includes("secret-cancellation-canary"), false);
   assert.equal(JSON.stringify(result).includes("secret-message-canary"), false);
+});
+
+test("server constraint diagnostics pass through the bounded validation allowlist", async () => {
+  for (const reason of [
+    "result_not_declared",
+    "result_required",
+    "field_not_declared",
+    "constraint_invalid",
+    "constraint_violated",
+  ]) {
+    const { operations } = fakeOperations({
+      getHostedItem: () => {
+        throw new FakeCaseworkClientError({
+          kind: "problem",
+          code: "casework.validation",
+          status: 422,
+          validation: { path: "/batchStatus", reason },
+        });
+      },
+    });
+    const result = await operations.getCaseworkItem({ itemId: "item-1" })(state());
+    assert.equal(result.data.caseworkItem.branch, "invalid_request");
+    assert.deepEqual(result.data.caseworkItem.validation, {
+      path: "/batchStatus",
+      reason,
+    });
+  }
 });
 
 test("package pins the published client contract", () => {

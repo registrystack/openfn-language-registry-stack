@@ -14,7 +14,12 @@ Casework profile.
 ## Client packaging
 
 This package pins `@registrystack/client` to **0.32.0** and uses its `casework`
-namespace. This adaptor has not been published.
+namespace. The pinned client cannot yet carry `resultConstraints` on create or
+`result` on terminal items: its request and response types are closed.
+Constraints-in and result-out go live with the coordinated client release and
+pin bump; until then a caller passing `resultConstraints` receives the client's
+own `invalid_request` before any HTTP request is made. This adaptor has not
+been published.
 
 ## Configuration
 
@@ -46,14 +51,21 @@ job output.
 ## Operations
 
 - `createCaseworkItem` requires `kind`, `requesterReference`, `display`, and an
-  explicit `idempotencyKey`.
+  explicit `idempotencyKey`. An optional `resultConstraints` object narrows the
+  kind's result schema for the item: it is keyed by the schema's top-level field
+  names, forwarded verbatim, and validated server-side against the kind's
+  declared schema. The server, not the adaptor, rejects unknown fields or
+  values outside the schema.
 - `getCaseworkItem` requires `itemId`.
 - `addCaseworkNote` requires `itemId`, `expectedRevision`, `note`, and an
   explicit `idempotencyKey`.
 - `listCaseworkNotes` requires `itemId`; `cursor` and `limit` are optional.
 - `cancelCaseworkItem` requires `itemId`, `expectedRevision`, `reason`, and an
   explicit `idempotencyKey`.
-- `pollCaseworkResults` accepts an optional `cursor` and `limit`.
+- `pollCaseworkResults` accepts an optional `cursor` and `limit`. A completed
+  item may carry a structured `result` decided by the person; it is absent when
+  the kind declares no result schema or the person submitted none, and the poll
+  stays valid either way.
 - `listCaseworkWorkItems` requires `sourceProfile` and an exact `query` with
   `view`; `getCaseworkWorkItem`, `previewCaseworkTaskTemplates`, and
   `listCaseworkTaskGrants` require `sourceProfile` and `itemId`.
@@ -101,12 +113,19 @@ execute(
     kind: state.data.caseworkKind,
     requesterReference: state.data.requestReference,
     display: state.data.caseworkDisplay,
+    resultConstraints: state.data.resultConstraints,
     idempotencyKey: state.data.createKey,
     as: "createdCasework",
   })),
   pollCaseworkResults({ limit: 25, as: "terminalResults" }),
 );
 ```
+
+With a kind that declares a `batchStatus` result, the constraints could be
+`{ batchStatus: { oneOf: [{ const: "valid" }, { const: "partial" }] } }`, and a
+completed terminal item then reads
+`terminalResults.value.items[0].result` as e.g.
+`{ batchStatus: "partial" }`.
 
 ## Verification
 

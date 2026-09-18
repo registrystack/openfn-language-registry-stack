@@ -18,6 +18,11 @@ const SAFE_VALIDATION_REASONS = new Set([
   "outcome_not_declared",
   "reason_required",
   "text_invalid",
+  "result_not_declared",
+  "result_required",
+  "field_not_declared",
+  "constraint_invalid",
+  "constraint_violated",
 ]);
 const RESULT_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const SAFE_CODE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
@@ -60,6 +65,14 @@ export function createCaseworkOperations(loadBindings) {
               "requesterReference",
             ),
             display: requiredObject(input.display, "display"),
+            ...(input.resultConstraints === undefined
+              ? {}
+              : {
+                  resultConstraints: optionalObject(
+                    input.resultConstraints,
+                    "resultConstraints",
+                  ),
+                }),
           },
         ),
       ),
@@ -211,6 +224,7 @@ function validateInputs(name, input) {
     requiredString(input.kind, "kind");
     requiredString(input.requesterReference, "requesterReference");
     requiredObject(input.display, "display");
+    optionalObject(input.resultConstraints, "resultConstraints");
   }
   if (name === "caseworkNote") requiredString(input.note, "note");
   if (name === "caseworkCancellation") requiredString(input.reason, "reason");
@@ -382,6 +396,12 @@ function requiredObject(value, label) {
   } catch {
     throw new OperationFailure("invalid_request", `${label}.object_required`);
   }
+}
+
+// An absent optional object stays absent on the wire; a supplied one must be a
+// plain object. The server remains the authority over its contents.
+function optionalObject(value, label) {
+  return value === undefined ? undefined : requiredObject(value, label);
 }
 
 function requiredRevision(value) {
