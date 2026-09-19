@@ -13,6 +13,13 @@ class OperationFailure extends Error {
   }
 }
 
+const SOURCE_LIFECYCLE_OPERATIONS = new Set([
+  "submit_request",
+  "revise_request",
+  "cancel_request",
+  "apply_request",
+]);
+
 /** Return caller-filtered descriptive metadata. Opaque write bindings stay local. */
 export function discoverRegistry(options = {}) {
   return operation(options, async (client, input) => document(
@@ -87,17 +94,20 @@ export function executeLifecycleAction(options = {}) {
     const route = required(input.route);
     const recordIdentifier = required(input.recordIdentifier);
     const requestedOperation = required(input.operation);
+    if (!SOURCE_LIFECYCLE_OPERATIONS.has(requestedOperation) || input.stage !== undefined) {
+      throw new OperationFailure("invalid_request", "action.unsupported");
+    }
     const metadata = await client.registryContract(profile);
     const authority = metadata.selectLifecycle(entity, profile);
     const record = await client.getRecord(route, recordIdentifier, { accessProfile: profile, format: input.format ?? "json" });
     const actions = client.lifecycleActions(authority, record.value, input.format);
     const selected = actions.filter((action) => action.operation === requestedOperation
-      && (action.stage ?? null) === (input.stage ?? null));
+      && action.stage == null);
     if (selected.length !== 1) throw new OperationFailure("denied", "action.unavailable");
     const action = selected[0];
     const advertised = record.value.data.request?.actions ?? [];
     if (!advertised.some((item) => item.href === action.href && item.operation === action.operation
-      && (item.stage ?? null) === (action.stage ?? null) && item.ifMatch === ifMatch)) {
+      && item.stage == null && item.ifMatch === ifMatch)) {
       throw new OperationFailure("conflict", "action.precondition_changed");
     }
     return client.executeLifecycleAction(action, key);

@@ -6,23 +6,18 @@
 
 - The event bridge accepts `BREG_BIND_HOST=127.0.0.1` for host-local receivers.
   Its existing `0.0.0.0` default remains unchanged.
-- `@openfn/language-registry-casework` wraps the native Casework client for
-  requester operations on hosted items and task operations on source inboxes
-  and grants.
-- `createCaseworkItem` in `@openfn/language-registry-casework` accepts an
-  optional `resultConstraints` object keyed by the kind's result-schema field
-  names and forwards it verbatim for server-side validation.
-  `pollCaseworkResults` surfaces the structured `result` on completed items
-  when the server returns one and stays valid when it does not. The pinned
-  0.32.0 client cannot carry these fields yet (closed request and response
-  types); constraints-in and result-out go live with the coordinated client
-  release and pin bump, and until then a caller passing `resultConstraints`
-  receives the client's own `invalid_request` before any HTTP request.
+- `@openfn/language-registry-casework` wraps the unified Casework request,
+  result, feed, cancellation, note, and history surfaces alongside source task
+  operations. Result lookup preserves pending, concealed-or-unknown, and
+  expired outcomes instead of treating a feed event as the result payload.
 
 ### Changed
 
 - The Evidence, BREG and Casework adaptors pin `@registrystack/client` 0.32.0.
   The pilot's Registry Stack images and bootstrap tools remain at 0.27.0.
+- Casework requester workflows now pass the closed review request, expected
+  submission digest, and accepted correlation binding. Removed hosted-item
+  operation names and endpoints are not retained as fallbacks.
 
 ### Removed
 

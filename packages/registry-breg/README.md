@@ -65,7 +65,7 @@ when the next step no longer needs them. The adaptor does not log requests.
 | `createRecord` | `operationIdentifier`, `accessProfile`, `data`, `idempotencyKey`. |
 | `patchRecord` | `operationIdentifier`, `accessProfile`, `recordIdentifier`, `etag`, `operations`, `idempotencyKey`. |
 | `createChangeRequest` | Same as create; use the configured change-request entity's create operation to create a draft. |
-| `executeLifecycleAction` | `entityIdentifier`, `route`, `recordIdentifier`, `accessProfile`, `operation`, action `ifMatch`, `idempotencyKey`; `stage` for staged review. |
+| `executeLifecycleAction` | `entityIdentifier`, `route`, `recordIdentifier`, `accessProfile`, one of the four source lifecycle operations, action `ifMatch`, and `idempotencyKey`. |
 
 Reads and lookup accept `select`, `accessProfile`, and `format` (`json` or
 `json-ld`). Lists also accept these. Creates, patches and lifecycle actions accept
@@ -82,18 +82,19 @@ metadata remains descriptive; this adaptor does not execute it.
 Use the direct read's exact strong ETag for patching. Lifecycle `ifMatch` is the
 separate action-specific value in `value.data.request.actions`, never the record
 ETag. The lifecycle helper refetches the contract and record, promotes actions
-through the native client, and requires exactly one matching operation/stage and
-the caller's held `ifMatch`. A changed proposal fails before any action POST.
-Supported operation names are `submit_request`, `approve_request`,
-`reject_request`, `request_revision`, `revise_request`, `cancel_request`, and
-`apply_request`, subject to the current metadata, actor, stage and record state.
+through the native client, and requires exactly one matching operation and the
+caller's held `ifMatch`. A changed proposal fails before any action POST.
+Supported operation names are `submit_request`, `revise_request`,
+`cancel_request`, and `apply_request`, subject to the current metadata, actor,
+record state, and external review correlation.
 
 Create a governed correction with `createChangeRequest`, read the created request
 with `getRecord` to obtain its current actions, then explicitly call
 `executeLifecycleAction` with `operation: 'submit_request'`. Give each mutation
 its own durable idempotency key derived from the source event and operation.
-Creating a draft does not approve or submit it. Review and application remain
-separate actor-authorized actions. See the [create and submit job](./jobs/create-and-submit.js)
+Creating a draft does not approve or submit it. Casework owns review decisions;
+BREG only exposes the externally verified review projection and its separately
+authorized source application action. See the [create and submit job](./jobs/create-and-submit.js)
 and [read and patch job](./jobs/read-and-patch.js) for synthetic templates.
 
 ## Failures and recovery
