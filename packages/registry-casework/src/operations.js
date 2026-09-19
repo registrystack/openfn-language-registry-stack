@@ -18,6 +18,11 @@ const SAFE_VALIDATION_REASONS = new Set([
   "outcome_not_declared",
   "reason_required",
   "text_invalid",
+  "result_not_declared",
+  "result_required",
+  "field_not_declared",
+  "constraint_invalid",
+  "constraint_violated",
 ]);
 const RESULT_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const SAFE_CODE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
@@ -47,68 +52,75 @@ export function createCaseworkOperations(loadBindings) {
   }
 
   return {
-    createCaseworkItem: (options = {}) =>
+    createCaseworkRequest: (options = {}) =>
       operation(loadBindings, options, "caseworkCreated", null, (client, auth, input) =>
-        client.createHostedItem(
+        client.createOrRecoverReviewRequest(
           auth.token,
           auth.profile,
           requiredString(input.idempotencyKey, "idempotencyKey"),
-          {
-            kind: requiredString(input.kind, "kind"),
-            requesterReference: requiredString(
-              input.requesterReference,
-              "requesterReference",
-            ),
-            display: requiredObject(input.display, "display"),
-          },
+          requiredObject(input.request, "request"),
+          requiredString(input.expectedSubmissionDigest, "expectedSubmissionDigest"),
         ),
       ),
 
-    getCaseworkItem: (options = {}) =>
-      operation(loadBindings, options, "caseworkItem", null, (client, auth, input) =>
-        client.getHostedItem(
+    getCaseworkRequest: (options = {}) =>
+      operation(loadBindings, options, "caseworkRequest", null, (client, auth, input) =>
+        client.reviewRequest(
           auth.token,
           auth.profile,
-          requiredString(input.itemId, "itemId"),
+          requiredString(input.requestId, "requestId"),
+        ),
+      ),
+
+    getCaseworkResult: (options = {}) =>
+      operation(loadBindings, options, "caseworkResult", null, (client, auth, input) =>
+        client.reviewResult(
+          auth.token,
+          auth.profile,
+          requiredObject(input.accepted, "accepted"),
         ),
       ),
 
     addCaseworkNote: (options = {}) =>
       operation(loadBindings, options, "caseworkNote", null, (client, auth, input) =>
-        client.addHostedNote(
+        client.addReviewNote(
           auth.token,
           auth.profile,
-          requiredString(input.itemId, "itemId"),
-          requiredRevision(input.expectedRevision),
+          requiredString(input.requestId, "requestId"),
           requiredString(input.idempotencyKey, "idempotencyKey"),
-          { note: requiredString(input.note, "note") },
+          {
+            audience: reviewAudience(input.audience),
+            note: requiredString(input.note, "note"),
+          },
         ),
       ),
 
-    listCaseworkNotes: (options = {}) =>
-      operation(loadBindings, options, "caseworkNotes", "noteId", (client, auth, input) =>
-        client.requesterHostedNotes(
+    listCaseworkHistory: (options = {}) =>
+      operation(loadBindings, options, "caseworkHistory", "eventId", (client, auth, input) =>
+        client.reviewHistory(
           auth.token,
           auth.profile,
-          requiredString(input.itemId, "itemId"),
+          requiredString(input.requestId, "requestId"),
           pageQuery(input),
         ),
       ),
 
-    cancelCaseworkItem: (options = {}) =>
+    cancelCaseworkRequest: (options = {}) =>
       operation(
         loadBindings,
         options,
         "caseworkCancellation",
         null,
         (client, auth, input) =>
-          client.cancelHostedItem(
+          client.cancelReviewRequest(
             auth.token,
             auth.profile,
-            requiredString(input.itemId, "itemId"),
-            requiredRevision(input.expectedRevision),
+            requiredString(input.requestId, "requestId"),
             requiredString(input.idempotencyKey, "idempotencyKey"),
-            { reason: requiredString(input.reason, "reason") },
+            {
+              subject: requiredObject(input.subject, "subject"),
+              reason: requiredString(input.reason, "reason"),
+            },
           ),
       ),
 
@@ -119,7 +131,7 @@ export function createCaseworkOperations(loadBindings) {
         "caseworkTerminal",
         "eventId",
         (client, auth, input) =>
-          client.hostedTerminalItems(
+          client.reviewResults(
             auth.token,
             auth.profile,
             pageQuery(input),
@@ -179,11 +191,12 @@ function operation(loadBindings, options, defaultName, deduplicateBy, invoke) {
         pick(configuration, CLIENT_CONFIG_FIELDS),
       );
       const outcome = await invoke(client, auth, input);
-      result = {
-        branch: "succeeded",
-        value: outcome.value,
-        ...(safeIdentifier(outcome.traceId) ? { traceId: outcome.traceId } : {}),
-      };
+      const trace = safeIdentifier(outcome.traceId)
+        ? { traceId: outcome.traceId }
+        : {};
+      result = outcome.kind === "pending" || outcome.kind === "concealed_or_unknown" || outcome.kind === "expired"
+        ? { branch: outcome.kind, value: null, ...trace }
+        : { branch: "succeeded", value: outcome.value, ...trace };
     } catch (error) {
       result = failure(error, ClientError, ProviderError, deduplicateBy);
     }
@@ -202,25 +215,39 @@ function validateInputs(name, input) {
   if (["caseworkCreated", "caseworkNote", "caseworkCancellation", "caseworkTaskGrant"].includes(name)) {
     requiredString(input.idempotencyKey, "idempotencyKey");
   }
-  if (["caseworkItem", "caseworkNote", "caseworkNotes", "caseworkCancellation", "caseworkWorkItem", "caseworkTaskTemplates",
+  if (["caseworkWorkItem", "caseworkTaskTemplates",
     "caseworkTaskGrants", "caseworkTaskGrant", "caseworkTaskRevocation"].includes(name)) requiredString(input.itemId, "itemId");
   if (["caseworkWorkItems", "caseworkWorkItem", "caseworkTaskTemplates", "caseworkTaskGrants", "caseworkTaskGrant",
     "caseworkTaskRevocation"].includes(name)) requiredString(input.sourceProfile, "sourceProfile");
-  if (["caseworkNote", "caseworkCancellation", "caseworkTaskGrant"].includes(name)) requiredRevision(input.expectedRevision);
+  if (["caseworkTaskGrant"].includes(name)) requiredRevision(input.expectedRevision);
   if (name === "caseworkCreated") {
-    requiredString(input.kind, "kind");
-    requiredString(input.requesterReference, "requesterReference");
-    requiredObject(input.display, "display");
+    requiredObject(input.request, "request");
+    requiredString(input.expectedSubmissionDigest, "expectedSubmissionDigest");
   }
-  if (name === "caseworkNote") requiredString(input.note, "note");
-  if (name === "caseworkCancellation") requiredString(input.reason, "reason");
+  if (["caseworkRequest", "caseworkNote", "caseworkHistory", "caseworkCancellation"].includes(name)) requiredString(input.requestId, "requestId");
+  if (name === "caseworkResult") requiredObject(input.accepted, "accepted");
+  if (name === "caseworkNote") {
+    reviewAudience(input.audience);
+    requiredString(input.note, "note");
+  }
+  if (name === "caseworkCancellation") {
+    requiredObject(input.subject, "subject");
+    requiredString(input.reason, "reason");
+  }
   if (name === "caseworkWorkItems") requiredObject(input.query, "query");
   if (name === "caseworkTaskGrant") {
     requiredString(input.templateId, "templateId");
     requiredString(input.templateVersion, "templateVersion");
   }
   if (name === "caseworkTaskRevocation" || name === "caseworkTaskStatus") requiredString(input.grantId, "grantId");
-  if (["caseworkNotes", "caseworkTerminal"].includes(name)) pageQuery(input);
+  if (["caseworkHistory", "caseworkTerminal"].includes(name)) pageQuery(input);
+}
+
+function reviewAudience(value) {
+  if (value !== "requester" && value !== "reviewers") {
+    throw new OperationFailure("invalid_request", "audience.invalid");
+  }
+  return value;
 }
 
 function failure(error, ClientError, ProviderError, deduplicateBy) {

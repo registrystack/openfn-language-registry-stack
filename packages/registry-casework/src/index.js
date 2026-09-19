@@ -20,11 +20,12 @@ const operations = createCaseworkOperations(() => {
 });
 
 export const {
-  createCaseworkItem,
-  getCaseworkItem,
+  createCaseworkRequest,
+  getCaseworkRequest,
+  getCaseworkResult,
   addCaseworkNote,
-  listCaseworkNotes,
-  cancelCaseworkItem,
+  listCaseworkHistory,
+  cancelCaseworkRequest,
   pollCaseworkResults,
   listCaseworkWorkItems,
   getCaseworkWorkItem,

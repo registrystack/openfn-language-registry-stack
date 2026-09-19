@@ -1,7 +1,7 @@
 {
   "name": "@openfn/language-registry-casework",
   "version": "0.1.0",
-  "description": "OpenFn operations for Registry Casework hosted intake and task grants.",
+  "description": "OpenFn operations for Registry Casework review requests and task grants.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.js",

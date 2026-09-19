@@ -83,6 +83,23 @@ test("missing keys/preconditions and arbitrary operation URLs cannot write", asy
   } finally { await stub.close(); }
 });
 
+test("removed review actions and stage selectors fail before discovery", async () => {
+  const stub = await server(regular);
+  try {
+    for (const input of [
+      { ...lifecycle, operation: "approve_request" },
+      { ...lifecycle, operation: "reject_request" },
+      { ...lifecycle, operation: "request_revision" },
+      { ...lifecycle, stage: "review" },
+    ]) {
+      const result = await executeLifecycleAction(input)(state(stub.baseUrl));
+      assert.equal(result.data.breg.branch, "invalid_request");
+      assert.equal(result.data.breg.problem.code, "action.unsupported");
+    }
+    assert.equal(stub.requests.length, 0);
+  } finally { await stub.close(); }
+});
+
 test("native lifecycle promotion executes exact action and refuses a changed precondition", async () => {
   const stub = await server((req, res) => {
     if (req.method === "GET" && req.url.includes(`/companies/${ID}`)) { res.setHeader("etag", ETAG); return res.end(JSON.stringify(record(true))); }
