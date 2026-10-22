@@ -113,6 +113,11 @@
             "type": "string"
           }
         },
+        "maximumResponseBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum byte size for a signed Evidence response."
+        },
         "token": {
           "type": "object",
           "writeOnly": true,

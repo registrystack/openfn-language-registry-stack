@@ -16,10 +16,14 @@ Put the native SDK configuration in `state.configuration.breg`, or directly in
     "baseUrl": "https://registry.example.invalid/",
     "authorization": { "static": "REPLACE_WITH_BEARER_TOKEN" },
     "requestTimeoutMilliseconds": 30000,
-    "maxResponseBytes": 4194304
+    "maximumResponseBytes": 4194304
   }
 }
 ```
+
+The adaptor maps `maximumResponseBytes` to the pinned 0.38 client's internal
+`maxResponseBytes` field. The authored `breg` namespace is closed, so the old
+spelling and other unknown fields are refused by the configuration contract.
 
 Alternatively use `authorization: { privateKeyJwt: { tokenEndpoint, clientId,
 clientKey, audience } }`, where `clientKey` is a private JWK with `kty`, `kid`,

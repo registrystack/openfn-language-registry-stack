@@ -107,7 +107,7 @@ function state(baseUrl = "https://casework.example.test/tenant") {
         baseUrl,
         token: "synthetic-requester-secret",
         profile: "requester",
-        maxResponseBytes: 1_000_000,
+        maximumResponseBytes: 1_000_000,
       },
     },
     data: { input: "retained" },
@@ -584,6 +584,8 @@ test("package pins the published native client and authentication schema", () =>
     { required: ["authorization"] },
   ]);
   assert.equal(schema.properties.token.writeOnly, true);
+  assert.equal(schema.properties.maximumResponseBytes.type, "integer");
+  assert.equal(schema.properties.maxResponseBytes, undefined);
 });
 
 test("source task inspection and grants preserve held authority", async () => {
@@ -733,6 +735,35 @@ test("oversized credentials are rejected without construction or disclosure", as
   );
   assert.equal(calls.length, 0);
   assert.equal(JSON.stringify(result.data).includes("secret-canary"), false);
+});
+
+test("Casework uses only its closed namespace and forwards the canonical response bound", async () => {
+  const { calls, operations } = fakeOperations();
+  const configured = state();
+  configured.configuration.unrelated = { enabled: true };
+  const result = await operations.getReviewRequest({ requestId: REQUEST_ID })(configured);
+  assert.equal(result.data.reviewRequest.branch, "succeeded");
+  assert.deepEqual(calls.find(([method]) => method === "constructor")?.[1], {
+    baseUrl: configured.configuration.casework.baseUrl,
+    maxResponseBytes: 1_000_000,
+  });
+
+  configured.configuration.casework.maxResponseByes = 1234;
+  const refused = await operations.getReviewRequest({ requestId: REQUEST_ID })(configured);
+  assert.equal(refused.data.reviewRequest.branch, "invalid_request");
+  assert.equal(refused.data.reviewRequest.problem.code, "configuration.casework.unknown_field");
+  assert.equal(calls.filter(([method]) => method === "constructor").length, 1);
+});
+
+test("Casework requires an explicit namespace when other product settings exist", async () => {
+  const { calls, operations } = fakeOperations();
+  const configured = state();
+  configured.configuration.other = configured.configuration.casework;
+  delete configured.configuration.casework;
+  const result = await operations.getReviewRequest({ requestId: REQUEST_ID })(configured);
+  assert.equal(result.data.reviewRequest.branch, "invalid_request");
+  assert.equal(result.data.reviewRequest.problem.code, "configuration.invalid");
+  assert.equal(calls.length, 0);
 });
 
 async function startServer(handler) {

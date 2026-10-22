@@ -16,7 +16,7 @@
     },
     "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
     "connectTimeoutMilliseconds": { "type": "integer", "minimum": 1 },
-    "maxResponseBytes": { "type": "integer", "minimum": 1 },
+    "maximumResponseBytes": { "type": "integer", "minimum": 1 },
     "userAgent": { "type": "string" },
     "trustedRootCertificates": { "type": "string", "description": "PEM trust roots for the Registry HTTPS connection." }
   },

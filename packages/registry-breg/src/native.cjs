@@ -46,7 +46,21 @@ function copy(value, kind = "invalid_request") {
   return visit(value, 0);
 }
 class BaseRegistryClient extends breg.BaseRegistryClient {
-  constructor(config) { super(copy(config, "configuration")); }
+  constructor(config) {
+    const nativeConfig = copy(config, "configuration");
+    if (Object.hasOwn(nativeConfig, "maxResponseBytes")) {
+      throw new BaseRegistryClientError({
+        kind: "configuration",
+        message: "Base Registry configuration uses an unsupported field",
+      });
+    }
+    if (nativeConfig.maximumResponseBytes !== undefined) {
+      // The pinned 0.38 client uses the shorter spelling internally.
+      nativeConfig.maxResponseBytes = nativeConfig.maximumResponseBytes;
+      delete nativeConfig.maximumResponseBytes;
+    }
+    super(nativeConfig);
+  }
 }
 for (const [method, indexes] of [
   ["getRecord", [2]], ["listRecords", [1]], ["continueList", [0]],

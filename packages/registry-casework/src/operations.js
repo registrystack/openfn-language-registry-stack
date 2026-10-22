@@ -4,10 +4,16 @@ const CLIENT_CONFIG_FIELDS = [
   "baseUrl",
   "requestTimeoutMilliseconds",
   "connectTimeoutMilliseconds",
-  "maxResponseBytes",
+  "maximumResponseBytes",
   "userAgent",
   "trustedRootCertificates",
 ];
+const CASEWORK_CONFIG_FIELDS = new Set([
+  ...CLIENT_CONFIG_FIELDS,
+  "token",
+  "authorization",
+  "profile",
+]);
 const SAFE_VALIDATION_REASONS = new Set([
   "kind_not_allowed",
   "reference_invalid",
@@ -320,7 +326,13 @@ function operation(
       ProviderError = TokenError;
       const configuration = caseworkConfiguration(state);
       const auth = await requesterAuthority(configuration, PrivateKeyJwt);
-      const client = new CaseworkClient(pick(configuration, CLIENT_CONFIG_FIELDS));
+      const clientConfiguration = pick(configuration, CLIENT_CONFIG_FIELDS);
+      if (clientConfiguration.maximumResponseBytes !== undefined) {
+        // The pinned 0.38 client uses the shorter spelling internally.
+        clientConfiguration.maxResponseBytes = clientConfiguration.maximumResponseBytes;
+        delete clientConfiguration.maximumResponseBytes;
+      }
+      const client = new CaseworkClient(clientConfiguration);
       result = normalize(await invoke(client, auth, input));
     } catch (error) {
       result = failure(error, ClientError, ProviderError, deduplicateBy);
@@ -436,13 +448,16 @@ function caseworkConfiguration(state) {
     !Array.isArray(state.configuration)
       ? state.configuration
       : {};
-  const configuration = root.casework ?? root;
+  const configuration = root.casework;
   if (
     !configuration ||
     typeof configuration !== "object" ||
     Array.isArray(configuration)
   ) {
     throw new OperationFailure("invalid_request", "configuration.invalid");
+  }
+  if (Object.keys(configuration).some((field) => !CASEWORK_CONFIG_FIELDS.has(field))) {
+    throw new OperationFailure("invalid_request", "configuration.casework.unknown_field");
   }
   boundedString(configuration.baseUrl, "configuration.casework.baseUrl", 2048);
   if (
@@ -465,7 +480,7 @@ function caseworkConfiguration(state) {
   for (const field of [
     "requestTimeoutMilliseconds",
     "connectTimeoutMilliseconds",
-    "maxResponseBytes",
+    "maximumResponseBytes",
   ]) {
     if (configuration[field] !== undefined) {
       requiredPositiveInteger(configuration[field], `configuration.casework.${field}`);
