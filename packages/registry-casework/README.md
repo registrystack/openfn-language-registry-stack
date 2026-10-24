@@ -32,8 +32,12 @@ scopes } }`. Configure exactly one credential source. The adaptor validates the
 operation before asking the native provider for a token.
 
 `requestTimeoutMilliseconds`, `connectTimeoutMilliseconds`,
-`maxResponseBytes`, `userAgent`, and `trustedRootCertificates` pass to the
-maintained client. The token and profile never enter operation output. OpenFn
+`maximumResponseBytes`, `userAgent`, and `trustedRootCertificates` pass to the
+maintained client. Put Casework settings under `configuration.casework`; unknown
+fields in that namespace fail before client construction. Other configuration
+namespaces remain available to other adaptors. The 0.38 client uses the shorter
+`maxResponseBytes` spelling internally, which this adaptor maps at its boundary.
+The token and profile never enter operation output. OpenFn
 keeps configuration available during a composed job and removes it from final
 job output.
 

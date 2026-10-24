@@ -24,6 +24,20 @@ The adaptor also accepts the native client configuration under
 `privateKeyJwt`, and exchange authorization modes. Do not combine it with the
 two legacy top-level fields.
 
+```json
+{
+  "relay": {
+    "baseUrl": "https://relay.example.gov",
+    "authorization": { "static": "<bearer token>" },
+    "maximumResponseBytes": 4194304
+  }
+}
+```
+
+The adaptor maps `maximumResponseBytes` to the pinned 0.38 client's internal
+`maxResponseBytes` field. The `relay` namespace is closed, so the old spelling
+and other unknown fields are refused by the configuration contract.
+
 ## Read one record
 
 ```js

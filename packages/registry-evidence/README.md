@@ -33,7 +33,8 @@ Use `configuration.evidence` with the SDK's current configuration:
     "baseUrl": "https://evidence.example.gov",
     "trustedJwks": { "keys": [] },
     "revokedKeyIds": [],
-    "token": { "static": "<requester access token>" }
+    "token": { "static": "<requester access token>" },
+    "maximumResponseBytes": 4194304
   }
 }
 ```
@@ -53,7 +54,11 @@ private-key-JWT client-credentials exchange, replace `token` with:
 
 Store private material in the OpenFn credential, never job source or state.data.
 The native SDK validates the key, performs the exchange, and owns token caching.
-Optional SDK timeout, response-bound, and private-CA fields pass through intact.
+Optional SDK timeout and private-CA fields pass through intact. The authored
+response bound is `maximumResponseBytes`; the adaptor maps it to the pinned 0.38
+client's internal `maxResponseBytes` field. The old camelCase spelling is
+refused under `configuration.evidence` rather than silently ignored or treated
+as SDK-specific configuration.
 Exactly one token source is allowed. Existing flat credentials
 (`evidence_base_url`, `token`, `evidence_verification_jwks`,
 `evidence_revoked_key_ids`, plus optional `evidence_trusted_root_certificates`

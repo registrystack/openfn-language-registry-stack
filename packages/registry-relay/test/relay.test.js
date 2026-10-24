@@ -110,6 +110,37 @@ test("getRecord uses the 0.38 native V2 route and preserves composition credenti
   assert.equal(state.configuration.token, "secret-token");
 });
 
+test("canonical response bound reaches the native client and the old authored spelling is refused", async () => {
+  requests.length = 0;
+  const configured = baseState();
+  configured.configuration = {
+    unrelated: { enabled: true },
+    relay: {
+      baseUrl,
+      authorization: { static: "secret-token" },
+      maximumResponseBytes: 64,
+    },
+  };
+  const bounded = await getRecord({ resource: "farmers", recordIdentifier: "FARMER-1001" })(configured);
+  assert.equal(bounded.data.relay.branch, "retryable_infrastructure", JSON.stringify(bounded.data.relay));
+  assert.equal(requests.length, 1);
+
+  configured.configuration.relay = {
+    baseUrl,
+    authorization: { static: "secret-token" },
+    maxResponseBytes: 64,
+  };
+  const refused = await getRecord({ resource: "farmers", recordIdentifier: "FARMER-1001" })(configured);
+  assert.equal(refused.data.relay.branch, "invalid_request", JSON.stringify(refused.data.relay));
+  assert.equal(requests.length, 1);
+
+  const schema = JSON.parse(
+    readFileSync(new URL("../configuration-schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(schema.properties.relay.properties.maximumResponseBytes.type, "integer");
+  assert.equal(schema.properties.relay.properties.maxResponseBytes, undefined);
+});
+
 test("listRecords and continueList keep the native continuation closed", async () => {
   requests.length = 0;
   const first = await listRecords({

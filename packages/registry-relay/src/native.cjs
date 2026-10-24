@@ -66,7 +66,19 @@ function copy(value, kind = "invalid_request") {
 
 class RelayClient extends relay.RelayClient {
   constructor(config) {
-    super(copy(config, "configuration"));
+    const nativeConfig = copy(config, "configuration");
+    if (Object.hasOwn(nativeConfig, "maxResponseBytes")) {
+      throw new RelayClientError({
+        kind: "configuration",
+        message: "Registry Relay configuration uses an unsupported field",
+      });
+    }
+    if (nativeConfig.maximumResponseBytes !== undefined) {
+      // The pinned 0.38 client uses the shorter spelling internally.
+      nativeConfig.maxResponseBytes = nativeConfig.maximumResponseBytes;
+      delete nativeConfig.maximumResponseBytes;
+    }
+    super(nativeConfig);
   }
 }
 

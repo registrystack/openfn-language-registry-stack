@@ -62,7 +62,7 @@
       "type": "integer",
       "minimum": 1
     },
-    "maxResponseBytes": {
+    "maximumResponseBytes": {
       "type": "integer",
       "minimum": 1
     },

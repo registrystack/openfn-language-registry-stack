@@ -87,7 +87,10 @@ export function prepareEvidenceRequest(state, options = {}) {
       ? clientConfig.authorization === undefined
         ? EvidenceClient.fromProfile(clientConfig.profilePath, clientConfig.privateKeyJwk)
         : EvidenceClient.fromProfileWithAuthorization(clientConfig.profilePath, clientConfig.authorization)
-      : new EvidenceClient(clientConfig);
+      : new EvidenceClient(nativeEvidenceConfiguration(
+        clientConfig,
+        configuration.evidence !== undefined,
+      ));
     const progressive = profileMode ? resolveInputValue(state, {
       requirement: options.requirement,
       responseFormat: "signed-jws",
@@ -305,6 +308,22 @@ function evidenceConfiguration(configuration) {
   copyOptionalConfiguration(configuration, config, "evidence_trusted_root_certificates", "trustedRootCertificates");
   copyOptionalConfiguration(configuration, config, "evidence_max_response_bytes", "maxResponseBytes");
   return config;
+}
+
+function nativeEvidenceConfiguration(configuration, authoredNamespace) {
+  if (authoredNamespace && Object.hasOwn(configuration, "maxResponseBytes")) {
+    throw new EvidenceCallerError("configuration.evidence uses an unsupported field", {
+      code: "configuration.evidence.response_bound",
+    });
+  }
+  if (configuration.maximumResponseBytes === undefined) return configuration;
+  const nativeConfiguration = {
+    ...configuration,
+    // The pinned 0.38 client uses the shorter spelling internally.
+    maxResponseBytes: configuration.maximumResponseBytes,
+  };
+  delete nativeConfiguration.maximumResponseBytes;
+  return nativeConfiguration;
 }
 
 function parseConfigurationJson(value, label) {

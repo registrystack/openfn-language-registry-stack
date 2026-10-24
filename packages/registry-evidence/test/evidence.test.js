@@ -94,6 +94,39 @@ test("requestEvidence sends and verifies through the real Registry Stack client"
   }
 });
 
+test("canonical response bound is forwarded to the pinned native client", async () => {
+  const signingKey = generateSigningKey();
+  const spec = resolvedRequestSpec();
+  const stub = await startStubServer({
+    "POST /v1/evidence": evidenceRoute(spec, signingKey),
+  });
+
+  try {
+    const configured = evidenceState(stub.baseUrl, signingKey.jwks);
+    configured.configuration = {
+      unrelated: { enabled: true },
+      evidence: {
+        baseUrl: stub.baseUrl,
+        trustedJwks: signingKey.jwks,
+        revokedKeyIds: [],
+        token: { static: "secret-token" },
+        maximumResponseBytes: 64,
+      },
+    };
+    const result = await requestEvidence(requestOptions())(configured);
+    assert.equal(result.data.evidence.branch, "retryable_infrastructure");
+    assert.equal(stub.requests.length, 1);
+
+    const schema = JSON.parse(
+      readFileSync(new URL("../configuration-schema.json", import.meta.url), "utf8"),
+    );
+    assert.equal(schema.properties.evidence.properties.maximumResponseBytes.type, "integer");
+    assert.equal(schema.properties.evidence.properties.maxResponseBytes, undefined);
+  } finally {
+    await stub.close();
+  }
+});
+
 test("native verification rejects a signed response outside the closed policy", async () => {
   const signingKey = generateSigningKey();
   const spec = resolvedRequestSpec();
@@ -390,6 +423,23 @@ test("ambiguous credential sources and unsigned response requests are refused lo
   assert.throws(() => prepareEvidenceRequest(state, requestOptions()), { code: "configuration.authentication" });
   delete state.configuration.evidence;
   assert.throws(() => prepareEvidenceRequest(state, requestOptions({ responseFormat: "sd-jwt-vc" })), { code: "configuration.response_format" });
+
+  state.configuration.evidence_max_response_bytes = 64;
+  assert.doesNotThrow(() => prepareEvidenceRequest(state, requestOptions()));
+
+  state.configuration = {
+    evidence: {
+      baseUrl: "http://127.0.0.1:1/",
+      trustedJwks: key.jwks,
+      revokedKeyIds: [],
+      token: { static: "secret-token" },
+      maxResponseBytes: 64,
+    },
+  };
+  assert.throws(
+    () => prepareEvidenceRequest(state, requestOptions()),
+    { code: "configuration.evidence.response_bound" },
+  );
 });
 
 test("profile requests verify first-use and matched receipts and refuse subject changes", async () => {

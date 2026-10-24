@@ -52,6 +52,24 @@ test("native discovery, exact lookup, read, and schema preserve composition conf
   } finally { await stub.close(); }
 });
 
+test("canonical response bound reaches the native client and the old authored spelling is refused", async () => {
+  const stub = await server(regular);
+  try {
+    const bounded = state(stub.baseUrl);
+    bounded.configuration.unrelated = { enabled: true };
+    bounded.configuration.breg.maximumResponseBytes = 64;
+    const result = await getRecord({ route: "companies", recordIdentifier: ID })(bounded);
+    assert.equal(result.data.breg.branch, "retryable_infrastructure", JSON.stringify(result.data.breg));
+    assert.equal(stub.requests.length, 1);
+
+    const oldSpelling = state(stub.baseUrl);
+    oldSpelling.configuration.breg.maxResponseBytes = 64;
+    const refused = await getRecord({ route: "companies", recordIdentifier: ID })(oldSpelling);
+    assert.equal(refused.data.breg.branch, "invalid_request", JSON.stringify(refused.data.breg));
+    assert.equal(stub.requests.length, 1);
+  } finally { await stub.close(); }
+});
+
 test("metadata-selected create and patch carry caller keys and exact record ETag", async () => {
   const stub = await server(regular);
   try {
@@ -173,6 +191,8 @@ test("configuration schema preserves static, private-key, and exchange authoriza
   );
   assert.ok(schema.$defs.privateKeyJwt.properties.resource);
   assert.ok(schema.$defs.privateKeyJwt.properties.scopes);
+  assert.equal(schema.properties.maximumResponseBytes.type, "integer");
+  assert.equal(schema.properties.maxResponseBytes, undefined);
 });
 
 test("compiled OpenFn job composes native reads and writes and runtime removes credentials", async () => {
