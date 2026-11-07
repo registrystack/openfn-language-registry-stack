@@ -30,11 +30,11 @@ const subject = {
   digest: `sha256:${"a".repeat(64)}`,
 };
 const request = {
-  kind: "batch-validation",
+  policy: { id: "batch-validation" },
   subject,
   requesterReference: "batch-0042",
   context: {
-    strategy: "submitted",
+    mode: "submitted",
     snapshot: { summary: "Review batch 42" },
   },
   resultConstraints: { acceptedCount: { minimum: 0 } },
@@ -73,12 +73,12 @@ function fakeOperations(handlers = {}) {
     "addReviewNote",
     "reviewHistory",
     "cancelReviewRequest",
-    "listWorkItems",
-    "getWorkItem",
-    "previewTaskTemplates",
-    "listTaskGrants",
-    "approveTaskGrant",
-    "revokeTaskGrant",
+    "reviewTasks",
+    "reviewTask",
+    "previewReviewTaskTemplates",
+    "listReviewTaskGrants",
+    "approveReviewTaskGrant",
+    "revokeReviewTaskGrant",
     "taskGrantStatus",
   ]) {
     FakeCaseworkClient.prototype[method] = async function (...args) {
@@ -125,8 +125,8 @@ test("adaptor exports current Requester review and bounded task operations", () 
     "addReviewNote",
     "listReviewHistory",
     "cancelReviewRequest",
-    "listCaseworkWorkItems",
-    "getCaseworkWorkItem",
+    "listCaseworkReviewTasks",
+    "getCaseworkReviewTask",
     "previewCaseworkTaskTemplates",
     "listCaseworkTaskGrants",
     "approveCaseworkTaskGrant",
@@ -143,6 +143,8 @@ test("adaptor exports current Requester review and bounded task operations", () 
     "claimReviewTask",
     "decideReviewTask",
     "listWorkItems",
+    "listCaseworkWorkItems",
+    "getCaseworkWorkItem",
     "taskAssertion",
   ]) {
     assert.equal(removedOrStaff in adaptor, false);
@@ -320,7 +322,7 @@ test("typed conflicts expose only bounded diagnostics", async () => {
         status: 409,
         detail: "secret-cancellation-canary",
         message: "secret-message-canary",
-        validation: { path: "/reason", reason: "text_invalid" },
+        validation: { path: "/reason", reason: "text-invalid" },
       });
     },
   });
@@ -336,7 +338,7 @@ test("typed conflicts expose only bounded diagnostics", async () => {
       status: 409,
       retryable: false,
     },
-    validation: { path: "/reason", reason: "text_invalid" },
+    validation: { path: "/reason", reason: "text-invalid" },
   });
   assert.equal(JSON.stringify(result).includes("secret-cancellation-canary"), false);
   assert.equal(JSON.stringify(result).includes("secret-message-canary"), false);
@@ -521,7 +523,10 @@ test("installed native client completes the Requester review loop over HTTP", as
     assert.equal(stub.requests.length, 9);
     for (const observed of stub.requests) {
       assert.equal(observed.headers.authorization, "Bearer synthetic-requester-secret");
-      assert.equal(observed.headers["registry-casework-profile"], "requester");
+      assert.equal(
+        observed.headers["registry-review-profile"] ?? observed.headers["registry-casework-profile"],
+        "requester",
+      );
       assert.equal(observed.headers["registry-source-profile"], undefined);
     }
     assert.deepEqual(JSON.parse(stub.requests[0].body), request);
@@ -564,7 +569,7 @@ test("VM normalization refuses unsafe graphs before the native client sends", ()
         invalidRequest,
         accepted.submissionDigest,
       ),
-      (error) => error instanceof CaseworkClientError && error.kind === "invalid_request",
+      (error) => error instanceof CaseworkClientError && error.kind === "invalid-request",
     );
   }
   assert.equal(accessorRead, false);
@@ -577,7 +582,7 @@ test("package pins the published native client and authentication schema", () =>
   const schema = JSON.parse(
     readFileSync(new URL("../configuration-schema.json", import.meta.url), "utf8"),
   );
-  assert.equal(manifest.dependencies["@registrystack/client"], "0.38.0");
+  assert.equal(manifest.dependencies["@registrystack/client"], "0.45.0");
   assert.deepEqual(schema.required, ["baseUrl", "profile"]);
   assert.deepEqual(schema.oneOf, [
     { required: ["token"] },
@@ -586,53 +591,70 @@ test("package pins the published native client and authentication schema", () =>
   assert.equal(schema.properties.token.writeOnly, true);
   assert.equal(schema.properties.maximumResponseBytes.type, "integer");
   assert.equal(schema.properties.maxResponseBytes, undefined);
+  assert.equal(schema.properties.attemptTimeoutMilliseconds.type, "integer");
+  assert.equal(schema.properties.requestTimeoutMilliseconds, undefined);
 });
 
-test("source task inspection and grants preserve held authority", async () => {
+test("review task inspection and grants preserve held authority", async () => {
   const { calls, operations } = fakeOperations();
   let current = state();
-  current = await operations.listCaseworkWorkItems({
+  const query = { ownership: "unclaimed", limit: 20 };
+  current = await operations.listCaseworkReviewTasks({
     sourceProfile: "reviewer",
-    query: { view: "my_teams", limit: 20 },
+    query,
   })(current);
-  current = await operations.getCaseworkWorkItem({
+  current = await operations.listCaseworkReviewTasks({})(current);
+  current = await operations.getCaseworkReviewTask({
     sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
   })(current);
   current = await operations.previewCaseworkTaskTemplates({
     sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
   })(current);
   current = await operations.listCaseworkTaskGrants({
-    sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
   })(current);
   current = await operations.approveCaseworkTaskGrant({
     sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
     expectedRevision: 7,
     idempotencyKey: "approval-key-004",
     templateId: "verify",
     templateVersion: "1",
   })(current);
   current = await operations.revokeCaseworkTaskGrant({
-    sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
     grantId: "grant-1",
   })(current);
   current = await operations.caseworkTaskGrantStatus({ grantId: "grant-1" })(current);
 
   assert.deepEqual(calls.filter(([method]) => method !== "constructor"), [
-    ["listWorkItems", "synthetic-requester-secret", "requester", "reviewer", { view: "my_teams", limit: 20 }],
-    ["getWorkItem", "synthetic-requester-secret", "requester", "reviewer", REQUEST_ID],
-    ["previewTaskTemplates", "synthetic-requester-secret", "requester", "reviewer", REQUEST_ID],
-    ["listTaskGrants", "synthetic-requester-secret", "requester", "reviewer", REQUEST_ID],
-    ["approveTaskGrant", "synthetic-requester-secret", "requester", "reviewer", REQUEST_ID, 7, "approval-key-004", { templateId: "verify", templateVersion: "1" }],
-    ["revokeTaskGrant", "synthetic-requester-secret", "requester", "reviewer", REQUEST_ID, "grant-1"],
+    ["reviewTasks", "synthetic-requester-secret", "requester", query, "reviewer"],
+    ["reviewTasks", "synthetic-requester-secret", "requester", {}, undefined],
+    ["reviewTask", "synthetic-requester-secret", "requester", REQUEST_ID, "reviewer"],
+    ["previewReviewTaskTemplates", "synthetic-requester-secret", "requester", { taskId: REQUEST_ID, sourceProfile: "reviewer" }],
+    ["listReviewTaskGrants", "synthetic-requester-secret", "requester", { taskId: REQUEST_ID }],
+    ["approveReviewTaskGrant", "synthetic-requester-secret", "requester", REQUEST_ID, 7, "approval-key-004", { templateId: "verify", templateVersion: "1" }, "reviewer"],
+    ["revokeReviewTaskGrant", "synthetic-requester-secret", "requester", REQUEST_ID, "grant-1"],
     ["taskGrantStatus", "synthetic-requester-secret", "grant-1"],
   ]);
   assert.equal(current.data.caseworkTaskStatus.branch, "succeeded");
   assert.equal("taskAssertion" in operations, false);
+});
+
+test("review task operations require a task id before client construction", async () => {
+  const { calls, operations } = fakeOperations();
+  for (const execute of [
+    operations.getCaseworkReviewTask({ sourceProfile: "reviewer" }),
+    operations.previewCaseworkTaskTemplates({}),
+    operations.listCaseworkTaskGrants({ itemId: REQUEST_ID }),
+    operations.revokeCaseworkTaskGrant({ grantId: "grant-1" }),
+  ]) {
+    const result = await execute(state());
+    assert.equal(Object.values(result.data).at(-1).branch, "invalid_request");
+  }
+  assert.equal(calls.length, 0);
 });
 
 test("private-key JWT authentication validates the operation before minting", async () => {
@@ -745,7 +767,7 @@ test("Casework uses only its closed namespace and forwards the canonical respons
   assert.equal(result.data.reviewRequest.branch, "succeeded");
   assert.deepEqual(calls.find(([method]) => method === "constructor")?.[1], {
     baseUrl: configured.configuration.casework.baseUrl,
-    maxResponseBytes: 1_000_000,
+    maximumResponseBytes: 1_000_000,
   });
 
   configured.configuration.casework.maxResponseByes = 1234;

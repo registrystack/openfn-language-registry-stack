@@ -5,7 +5,7 @@ const { types: { isProxy } } = require("node:util");
 const { breg, casework } = require("@registrystack/client");
 const { CaseworkClientError } = casework;
 
-function copy(value, kind = "invalid_request") {
+function copy(value, kind = "invalid-request") {
   const active = new Set();
   let nodes = 0;
   let bytes = 0;
@@ -85,8 +85,10 @@ for (const [method, indexes] of [
   ["cancelReviewRequest", [2, 4]],
   ["reviewHistory", [3]],
   ["addReviewNote", [4]],
-  ["listWorkItems", [3]],
-  ["approveTaskGrant", [6]],
+  ["reviewTasks", [2]],
+  ["approveReviewTaskGrant", [5]],
+  ["previewReviewTaskTemplates", [2]],
+  ["listReviewTaskGrants", [2]],
 ]) {
   CaseworkClient.prototype[method] = function (...args) {
     for (const index of indexes) {

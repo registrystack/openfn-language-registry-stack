@@ -11,7 +11,7 @@ import {
   approveCaseworkTaskGrant,
   createOrRecoverReviewRequest,
   getReviewRequest,
-  listCaseworkWorkItems,
+  listCaseworkReviewTasks,
 } from "../src/index.js";
 
 const REQUEST_ID = "00000000-0000-4000-8000-000000000001";
@@ -23,13 +23,14 @@ const subject = {
   digest: `sha256:${"a".repeat(64)}`,
 };
 const request = {
-  kind: "batch-validation",
+  policy: { id: "batch-validation" },
   subject,
   requesterReference: "batch-0042",
   context: {
-    strategy: "submitted",
+    mode: "submitted",
     snapshot: { summary: "Review batch 42" },
   },
+  resultConstraints: { acceptedCount: { minimum: 0 } },
 };
 const accepted = {
   requestId: REQUEST_ID,
@@ -57,14 +58,12 @@ test("installed client preserves requester and source-task authority", async (co
       res.statusCode = 201;
       return res.end(JSON.stringify(accepted));
     }
-    if (req.method === "GET" && req.url?.startsWith("/v1/work-items?")) {
-      return res.end(
-        JSON.stringify({ items: [], servedQueues: ["review"], status: "complete" }),
-      );
+    if (req.method === "GET" && req.url?.startsWith("/v1/review-tasks?")) {
+      return res.end(JSON.stringify({ items: [], status: "complete" }));
     }
     if (
       req.method === "POST" &&
-      req.url === `/v1/work-items/${REQUEST_ID}/task-grants`
+      req.url === `/v1/review-tasks/${REQUEST_ID}/task-grants`
     ) {
       return res.end(
         JSON.stringify({
@@ -115,20 +114,20 @@ test("installed client preserves requester and source-task authority", async (co
   assert.equal(requests[0].headers["idempotency-key"], "batch-0042:create");
   assert.deepEqual(JSON.parse(requests[0].body), request);
 
-  const listed = await listCaseworkWorkItems({
+  const listed = await listCaseworkReviewTasks({
     sourceProfile: "reviewer",
-    query: { view: "my_teams", limit: 20 },
+    query: { ownership: "unclaimed", limit: 20 },
   })(created);
   assert.equal(
-    listed.data.caseworkWorkItems.branch,
+    listed.data.caseworkReviewTasks.branch,
     "succeeded",
-    JSON.stringify(listed.data.caseworkWorkItems),
+    JSON.stringify(listed.data.caseworkReviewTasks),
   );
   assert.equal(requests[1].headers["registry-source-profile"], "reviewer");
 
   const approved = await approveCaseworkTaskGrant({
     sourceProfile: "reviewer",
-    itemId: REQUEST_ID,
+    taskId: REQUEST_ID,
     expectedRevision: 7,
     idempotencyKey: "grant-42",
     templateId: "verify",

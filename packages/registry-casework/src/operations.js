@@ -2,7 +2,7 @@
 
 const CLIENT_CONFIG_FIELDS = [
   "baseUrl",
-  "requestTimeoutMilliseconds",
+  "attemptTimeoutMilliseconds",
   "connectTimeoutMilliseconds",
   "maximumResponseBytes",
   "userAgent",
@@ -15,20 +15,25 @@ const CASEWORK_CONFIG_FIELDS = new Set([
   "profile",
 ]);
 const SAFE_VALIDATION_REASONS = new Set([
-  "kind_not_allowed",
-  "reference_invalid",
-  "object_required",
-  "maximum_bytes_exceeded",
-  "maximum_depth_exceeded",
-  "schema_mismatch",
-  "outcome_not_declared",
-  "reason_required",
-  "text_invalid",
-  "result_not_declared",
-  "result_required",
-  "field_not_declared",
-  "constraint_invalid",
-  "constraint_violated",
+  "binding-invalid",
+  "field-required",
+  "policy-not-allowed",
+  "reference-invalid",
+  "object-required",
+  "maximum-bytes-exceeded",
+  "maximum-depth-exceeded",
+  "schema-mismatch",
+  "outcome-not-declared",
+  "reason-required",
+  "text-invalid",
+  "result-not-declared",
+  "result-required",
+  "field-not-declared",
+  "constraint-invalid",
+  "constraint-violated",
+  "public-reason-required",
+  "public-reason-not-declared",
+  "approval-outcome-differs",
 ]);
 const RESULT_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const SAFE_CODE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
@@ -174,50 +179,48 @@ export function createCaseworkOperations(loadBindings) {
           ),
       ),
 
-    listCaseworkWorkItems: (options = {}) =>
+    listCaseworkReviewTasks: (options = {}) =>
       operation(
         loadBindings,
         options,
-        "caseworkWorkItems",
+        "caseworkReviewTasks",
         null,
         (input) => {
-          requiredString(input.sourceProfile, "sourceProfile");
-          requiredObject(input.query, "query");
+          optionalString(input.sourceProfile, "sourceProfile");
+          if (input.query !== undefined) requiredObject(input.query, "query");
         },
         (client, auth, input) =>
-          client.listWorkItems(
+          client.reviewTasks(
             auth.token,
             auth.profile,
+            input.query ?? {},
             input.sourceProfile,
-            input.query,
           ),
       ),
 
-    getCaseworkWorkItem: (options = {}) =>
-      sourceItemOperation(loadBindings, options, "caseworkWorkItem", (client, auth, input) =>
-        client.getWorkItem(
+    getCaseworkReviewTask: (options = {}) =>
+      taskOperation(loadBindings, options, "caseworkReviewTask", (client, auth, input) =>
+        client.reviewTask(
           auth.token,
           auth.profile,
+          input.taskId,
           input.sourceProfile,
-          input.itemId,
         )),
 
     previewCaseworkTaskTemplates: (options = {}) =>
-      sourceItemOperation(loadBindings, options, "caseworkTaskTemplates", (client, auth, input) =>
-        client.previewTaskTemplates(
+      taskOperation(loadBindings, options, "caseworkTaskTemplates", (client, auth, input) =>
+        client.previewReviewTaskTemplates(
           auth.token,
           auth.profile,
-          input.sourceProfile,
-          input.itemId,
+          taskGrantReadOptions(input),
         )),
 
     listCaseworkTaskGrants: (options = {}) =>
-      sourceItemOperation(loadBindings, options, "caseworkTaskGrants", (client, auth, input) =>
-        client.listTaskGrants(
+      taskOperation(loadBindings, options, "caseworkTaskGrants", (client, auth, input) =>
+        client.listReviewTaskGrants(
           auth.token,
           auth.profile,
-          input.sourceProfile,
-          input.itemId,
+          taskGrantReadOptions(input),
         )),
 
     approveCaseworkTaskGrant: (options = {}) =>
@@ -227,24 +230,24 @@ export function createCaseworkOperations(loadBindings) {
         "caseworkTaskGrant",
         null,
         (input) => {
-          sourceItem(input);
+          reviewTask(input);
           requiredRevision(input.expectedRevision);
           requiredString(input.idempotencyKey, "idempotencyKey");
           requiredString(input.templateId, "templateId");
           requiredString(input.templateVersion, "templateVersion");
         },
         (client, auth, input) =>
-          client.approveTaskGrant(
+          client.approveReviewTaskGrant(
             auth.token,
             auth.profile,
-            input.sourceProfile,
-            input.itemId,
+            input.taskId,
             input.expectedRevision,
             input.idempotencyKey,
             {
               templateId: input.templateId,
               templateVersion: input.templateVersion,
             },
+            input.sourceProfile,
           ),
       ),
 
@@ -255,15 +258,14 @@ export function createCaseworkOperations(loadBindings) {
         "caseworkTaskRevocation",
         null,
         (input) => {
-          sourceItem(input);
+          requiredString(input.taskId, "taskId");
           requiredString(input.grantId, "grantId");
         },
         (client, auth, input) =>
-          client.revokeTaskGrant(
+          client.revokeReviewTaskGrant(
             auth.token,
             auth.profile,
-            input.sourceProfile,
-            input.itemId,
+            input.taskId,
             input.grantId,
           ),
       ),
@@ -280,13 +282,20 @@ export function createCaseworkOperations(loadBindings) {
   };
 }
 
-function sourceItemOperation(loadBindings, options, defaultName, invoke) {
-  return operation(loadBindings, options, defaultName, null, sourceItem, invoke);
+function taskOperation(loadBindings, options, defaultName, invoke) {
+  return operation(loadBindings, options, defaultName, null, reviewTask, invoke);
 }
 
-function sourceItem(input) {
-  requiredString(input.sourceProfile, "sourceProfile");
-  requiredString(input.itemId, "itemId");
+function reviewTask(input) {
+  requiredString(input.taskId, "taskId");
+  optionalString(input.sourceProfile, "sourceProfile");
+}
+
+function taskGrantReadOptions(input) {
+  return {
+    taskId: input.taskId,
+    ...(input.sourceProfile === undefined ? {} : { sourceProfile: input.sourceProfile }),
+  };
 }
 
 function operation(
@@ -327,11 +336,6 @@ function operation(
       const configuration = caseworkConfiguration(state);
       const auth = await requesterAuthority(configuration, PrivateKeyJwt);
       const clientConfiguration = pick(configuration, CLIENT_CONFIG_FIELDS);
-      if (clientConfiguration.maximumResponseBytes !== undefined) {
-        // The pinned 0.38 client uses the shorter spelling internally.
-        clientConfiguration.maxResponseBytes = clientConfiguration.maximumResponseBytes;
-        delete clientConfiguration.maximumResponseBytes;
-      }
       const client = new CaseworkClient(clientConfiguration);
       result = normalize(await invoke(client, auth, input));
     } catch (error) {
@@ -478,7 +482,7 @@ function caseworkConfiguration(state) {
   }
   boundedString(configuration.profile, "configuration.casework.profile", 128);
   for (const field of [
-    "requestTimeoutMilliseconds",
+    "attemptTimeoutMilliseconds",
     "connectTimeoutMilliseconds",
     "maximumResponseBytes",
   ]) {
@@ -530,6 +534,10 @@ function requiredString(value, label) {
     throw new OperationFailure("invalid_request", `${label}.required`);
   }
   return value;
+}
+
+function optionalString(value, label) {
+  if (value !== undefined) requiredString(value, label);
 }
 
 function boundedString(value, label, maximumLength) {
