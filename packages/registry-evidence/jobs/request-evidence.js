@@ -23,7 +23,7 @@ execute(
       },
     ],
     expectedOutputs: [
-      { concept: "urn:example:concept:adult-status", form: "boolean" },
+      { concept: "urn:example:concept:adult-status", form: { type: "boolean" } },
     ],
     maximumAssertionLifetimeSeconds: 300,
     clockSkewSeconds: 30,

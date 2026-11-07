@@ -62,6 +62,7 @@ test("requestEvidence sends and verifies through the real Registry Stack client"
     assert.equal(stub.requests[0].headers.accept, "application/jose+json");
     assert.deepEqual(JSON.parse(stub.requests[0].body), {
       requestNonce: state.data.evidence.assertion.requestNonce,
+      expectedConfigurationRevision: spec.configurationRevision,
       requirement: spec.requirement,
       purpose: spec.purpose,
       subjects: [{
@@ -269,7 +270,7 @@ test("429 failures preserve the typed retry interval", async () => {
         "content-type": "application/problem+json",
         "retry-after": "30",
       });
-      res.end(problemBody(429, "evidence.rate_limited"));
+      res.end(problemBody(429, "evidence.rate-limited"));
     },
   });
 
@@ -460,14 +461,14 @@ test("profile requests verify first-use and matched receipts and refuse subject 
     "POST /token": jsonRoute({ access_token: "profile-token", token_type: "Bearer", expires_in: 300 }),
     "GET /v1/evidence-definitions": jsonRoute({
       schema: "registry.evidence-definitions/v1", assuranceProfile: "local", audience: spec.audience, issuedBy: spec.issuedBy, providedBy: spec.providedBy,
-      definitions: [{ handle: "adult-status", requirement: spec.requirement, configurationRevision: spec.configurationRevision, kind: "criterion", evidenceType: spec.evidenceType, purpose: spec.purpose, responseFormats: ["signed-jws"], referenceFrameworks: ["urn:example:framework:adult-status"], subjects: [{ role: "subject", cardinality: "one", selector: { profile: "civil-record-v1", valueOrigin: "request", fields: [{ type: "string", name: "record_reference", minimumBytes: 1, maximumBytes: 200 }] } }], concepts: [{ handle: "adult", concept: "urn:example:concept:adult-status", required: true, form: "boolean" }] }],
+      definitions: [{ handle: "adult-status", requirement: spec.requirement, configurationRevision: spec.configurationRevision, kind: "criterion", evidenceType: spec.evidenceType, purpose: spec.purpose, responseFormats: ["signed-jws"], referenceFrameworks: ["urn:example:framework:adult-status"], subjects: [{ role: "subject", cardinality: "one", selector: { profile: "civil-record-v1", valueOrigin: "request", fields: [{ type: "string", name: "record_reference", minimumBytes: 1, maximumBytes: 200 }] } }], concepts: [{ handle: "adult", concept: "urn:example:concept:adult-status", required: true, form: { type: "boolean" } }] }],
     }),
     "POST /v1/evidence": (req, res, body) => evidenceRoute(spec, signingKey, { subjects: [{ role: "subject", binding }] })(req, res, body),
   });
   origin = stub.baseUrl.replace(/\/$/, "");
   try {
     const profilePath = resolve(directory, "client.json");
-    writeFileSync(profilePath, JSON.stringify({ schema: "registry.evidence-client-profile/v1", baseUrl: origin, clientId: "openfn-profile", privateKey: { source: "file", path: "unused-in-memory-key.jwk" }, trust: { type: "local-loopback-discovery" }, contracts: { type: "published" } }), { mode: 0o600 });
+    writeFileSync(profilePath, JSON.stringify({ apiVersion: "id.registrystack.org/formats/evidence/client-profile/v1", kind: "EvidenceClientProfile", baseUrl: origin, clientId: "openfn-profile", privateKey: { type: "file", path: "unused-in-memory-key.jwk" }, trust: { type: "local-loopback-discovery" }, contracts: { type: "published" } }), { mode: 0o600 });
     const configuration = { evidence: { profilePath, privateKeyJwk: { ...clientKey.privateKey.export({ format: "jwk" }), kid: clientKey.kid, alg: "ES256" } } };
     const options = { requirement: "adult-status", selectors: { record_reference: { valueFrom: "person_id" } } };
     const input = () => ({ configuration, data: { person_id: "person-123" } });
@@ -503,7 +504,7 @@ function requestOptions(overrides = {}) {
       selectorValues: { record_reference: { valueFrom: "person_id" } },
     }],
     expectedOutputs: [
-      { concept: "urn:example:concept:adult-status", form: "boolean" },
+      { concept: "urn:example:concept:adult-status", form: { type: "boolean" } },
     ],
     maximumAssertionLifetimeSeconds: 300,
     clockSkewSeconds: 30,
@@ -615,7 +616,7 @@ function signEvidence(evidence, signingKey) {
 function problemBody(status, code) {
   const [title, detail] = {
     "evidence.unavailable": ["Evidence could not be produced", "evidence could not be produced for this request"],
-    "evidence.rate_limited": ["Evidence request rate is exhausted", "the Evidence request rate is exhausted"],
+    "evidence.rate-limited": ["Evidence request rate is exhausted", "the Evidence request rate is exhausted"],
   }[code];
   return JSON.stringify({
     type: `https://id.registrystack.org/problems/registry-evidence/${code.replaceAll(".", "/")}`,
