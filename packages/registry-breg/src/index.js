@@ -20,9 +20,9 @@ export function discoverRegistry(options = {}) {
   ));
 }
 
-export function getEntitySchema(options = {}) {
+export function getRecordSchema(options = {}) {
   return operation(options, async (client, input) => document(
-    await client.entitySchema(required(input.entityIdentifier), input.accessProfile),
+    await client.recordSchema(required(input.recordTypeIdentifier), input.accessProfile),
   ));
 }
 
@@ -59,11 +59,6 @@ export function createRecord(options = {}) {
   });
 }
 
-/** Create a draft in the configured change-request entity. Submission is a separate lifecycle action. */
-export function createChangeRequest(options = {}) {
-  return createRecord(options);
-}
-
 export function patchRecord(options = {}) {
   return operation(options, async (client, input) => {
     const key = required(input.idempotencyKey);
@@ -74,33 +69,6 @@ export function patchRecord(options = {}) {
     const metadata = await client.registryContract(profile);
     return client.patchRecord(metadata.selectPatch(identifier, profile), recordIdentifier,
       etag, input.operations, key, input.format);
-  });
-}
-
-/** Execute exactly one currently advertised action using a caller's held lifecycle precondition. */
-export function executeLifecycleAction(options = {}) {
-  return operation(options, async (client, input) => {
-    const key = required(input.idempotencyKey);
-    const ifMatch = required(input.ifMatch);
-    const profile = required(input.accessProfile);
-    const entity = required(input.entityIdentifier);
-    const route = required(input.route);
-    const recordIdentifier = required(input.recordIdentifier);
-    const requestedOperation = required(input.operation);
-    const metadata = await client.registryContract(profile);
-    const authority = metadata.selectLifecycle(entity, profile);
-    const record = await client.getRecord(route, recordIdentifier, { accessProfile: profile, format: input.format ?? "json" });
-    const actions = client.lifecycleActions(authority, record.value, input.format);
-    const selected = actions.filter((action) => action.operation === requestedOperation
-      && (action.stage ?? null) === (input.stage ?? null));
-    if (selected.length !== 1) throw new OperationFailure("denied", "action.unavailable");
-    const action = selected[0];
-    const advertised = record.value.data.request?.actions ?? [];
-    if (!advertised.some((item) => item.href === action.href && item.operation === action.operation
-      && (item.stage ?? null) === (action.stage ?? null) && item.ifMatch === ifMatch)) {
-      throw new OperationFailure("conflict", "action.precondition_changed");
-    }
-    return client.executeLifecycleAction(action, key);
   });
 }
 
@@ -138,20 +106,20 @@ function failure(error) {
   }
   const status = Number.isSafeInteger(error.status) ? error.status : 0;
   let branch = "failed";
-  if (error.kind === "configuration" || error.kind === "invalid_request"
+  if (error.kind === "configuration" || error.kind === "invalid-request"
     || (error.kind === "problem" && status === 400)) branch = "invalid_request";
   else if (error.kind === "transport" || (error.kind === "token" && error.tokenKind === "transport")
     || (error.kind === "problem" && (status === 429 || status >= 500))) branch = "retryable_infrastructure";
   else if (error.kind === "token" || status === 401) branch = "auth_failed";
-  else if (status === 403 || error.kind === "metadata_selection") branch = "denied";
-  else if (status === 404 || error.kind === "not_found") branch = "not_found";
+  else if (status === 403 || error.kind === "metadata-selection") branch = "denied";
+  else if (status === 404 || error.kind === "not-found") branch = "not_found";
   else if (status === 409 || status === 412) branch = "conflict";
   else if (error.kind === "protocol") branch = "protocol_failed";
   return {
     branch,
     problem: { code: `breg.${error.kind}`, status, retryable: branch === "retryable_infrastructure" },
     // Only typed diagnostics, never the SDK error message, response body, or caller inputs.
-    ...pick(error, ["code", "planRefusal", "traceId", "transportKind", "tokenKind"]),
+    ...pick(error, ["code", "refusalCode", "reasonCode", "traceId", "transportKind", "tokenKind"]),
   };
 }
 
