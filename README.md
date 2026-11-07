@@ -3,17 +3,19 @@
 **Beta:** intended for supervised, self-hosted pilots. APIs and deployment
 configuration may change before 1.0.
 
-The BREG, Evidence, Relay V2 and Casework adaptors target the published
-`@registrystack/client@0.38.0`. Use matching 0.38 runtimes and tools for new
-integrations. Run `npm run check` to verify all four adaptors and their OpenFn
-composition. Relay and Casework now use their current native APIs; consult their
-package READMEs when migrating older jobs.
+The BREG, Evidence and Casework adaptors target the published
+`@registrystack/client@0.45.0`. Use matching 0.45 runtimes and tools for new
+integrations. Run `npm run check` to verify the three adaptors and their OpenFn
+composition. The Relay adaptor is removed: the 0.45 client has no Relay
+namespace.
 
-The container pilot uses matching **Registry Stack 0.38.0** clients, runtimes,
-tools and authored packages, ThunderID for identity, and Casework for correction
-review. It creates a fresh deployment with separate databases and private
-configuration. The previous 0.27 pilot's `pilot/agriculture/.runtime` directory
-and `registry-openfn-pilot` volumes are retained and are not migrated or reused.
+**Pilot status:** the container pilot under `deployment/` and `pilot/agriculture/`
+still pins Registry Stack 0.38.0 server images, tools and checksums, and has not
+been repinned or run against 0.45. The generated Lightning project no longer
+contains the correction workflow, because it depended on the BREG change-request
+lifecycle operations that the 0.45 client removed. The pilot smoke test and the
+correction sections below describe the 0.38 flow and need a 0.45 pilot
+registry before they apply again.
 
 A self-hosted synthetic pilot connecting upstream OpenFn Lightning to Registry
 Stack Base Registry Engine (BREG) and signed Evidence. It demonstrates registration,
@@ -24,9 +26,9 @@ an isolated local pilot.
 The pilot uses:
 
 - [Registry Evidence adaptor](packages/registry-evidence), using the `evidence`
-  namespace of the published `@registrystack/client@0.38.0`.
+  namespace of the published `@registrystack/client@0.45.0`.
 - [Registry BREG adaptor](packages/registry-breg), using the same package's `breg`
-  namespace for metadata-selected writes, exact lookups and lifecycle actions.
+  namespace for metadata-selected writes and exact lookups.
 - Upstream Lightning 2.18.2 and websocket worker 1.29.0, packaged with Node
   24.19.0 on glibc and local adaptors. No OpenFn source patch is required.
 - Separate BREG, Casework and Lightning PostgreSQL databases, ThunderID,

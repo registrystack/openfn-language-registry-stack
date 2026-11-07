@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - name: Install the committed npm dependency graph
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check all four 0.38 adaptors, event services and compiled jobs
+      - name: Check the 0.45 adaptors, event services and compiled jobs
         run: npm run check
       - name: Check adaptor package contents
         run: npm run pack:dry-run

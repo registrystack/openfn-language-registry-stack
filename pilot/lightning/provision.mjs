@@ -151,7 +151,6 @@ export async function run(command = 'prepare', runtime = 'pilot/agriculture/.run
   const bindings = {
     accessProfile: generated.breg.accessProfile,
     createFarmOperation: generated.breg.farmCreateOperation,
-    createCorrectionOperation: generated.breg.correctionCreateOperation,
     requirement: generated.evidence.requirement,
     registeredConcept: generated.evidence.registeredConcept,
     evidenceRequest: generated.evidence.request,

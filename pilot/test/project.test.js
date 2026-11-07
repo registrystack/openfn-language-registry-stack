@@ -7,13 +7,10 @@ import compile from '@openfn/compiler';
 import run from '@openfn/runtime';
 import * as bregAdaptor from '../../packages/registry-breg/src/index.js';
 import { projectDocument, projectId, triggerIds, id } from '../lightning/project.mjs';
-import { metadata as baseMetadata, record as baseRecord, ETAG, ACTION_ETAG, ID, TRACE } from '../../packages/registry-breg/test/fixtures.js';
+import { metadata as baseMetadata, record as baseRecord, ETAG, ID, TRACE } from '../../packages/registry-breg/test/fixtures.js';
 
 const PROFILE = 'editor';
-const REQUEST_ID = '00000000-0000-4000-8000-000000000002';
-const bindings = { accessProfile: PROFILE, createFarmOperation: 'records.farm.create', createCorrectionOperation: 'records.name-correction.create', requirement: 'urn:synthetic:registered', registeredConcept: 'urn:synthetic:registered-concept' };
-const correctionInput = { submissionId: 'correction-001', recordId: ID, name: 'Synthetic Farm Corrected', reason: 'Synthetic correction', supportingReference: 'SYNTHETIC-001' };
-const correctionData = input => ({ record: input.recordId, name: input.name, reason: input.reason, supportingReference: input.supportingReference });
+const bindings = { accessProfile: PROFILE, createFarmOperation: 'records.farm.create', requirement: 'urn:synthetic:registered', registeredConcept: 'urn:synthetic:registered-concept' };
 const packagePath = fileURLToPath(new URL('../../packages/registry-breg', import.meta.url));
 let cacheId = 0;
 
@@ -27,61 +24,39 @@ async function runJob(name, baseUrl, data) {
     { configuration: { breg: { baseUrl, authorization: { static: 'synthetic-pilot-token' } } }, data },
     { linker: { modules: { '@openfn/language-registry-breg': { path: packagePath }, '@openfn/language-common': { path: fileURLToPath(new URL('../../node_modules/@openfn/language-common', import.meta.url)) } }, cacheKey: `pilot-project-${process.pid}-${cacheId++}` } });
 }
-
-function metadata(entity, route, fields) {
+function metadata() {
   const value = baseMetadata();
-  const fieldId = name => name.replace(/[A-Z]/g, letter => "-" + letter.toLowerCase());
-  const fieldIds = Object.keys(fields).map(fieldId);
-  value.entities[0].id = entity;
-  value.entities[0].route = route;
-  value.entities[0].readableFields = fieldIds;
-  value.entities[0].schema = `/v1/schemas/${entity}`;
-  value.entities[0].operations.forEach(operation => { operation.accessProfile = PROFILE; });
-  value.operations.forEach(operation => {
-    operation.id = operation.id.replace('company', entity);
-    operation.path = operation.path.replace('companies', route);
-    operation.sourceEntity = entity;
-    operation.responseEntity = entity;
+  const ids = ['local-identifier', 'name'];
+  const fields = [['local-identifier', 'localIdentifier', 'Local identifier'], ['name', 'name', 'Name']]
+    .map(([id, apiName, label]) => ({ id, apiName, label, schema: { type: 'string' }, required: true, nullable: false, readOnly: false, removable: false }));
+  value.recordTypes = [{ id: 'farm', datasetIdentifier: 'farms', route: 'farms', operations: [{ operation: 'create', accessProfile: PROFILE }], readableFields: ids, schema: '/v1/schemas/farm' }];
+  value.operations = value.operations.filter(operation => operation.operation === 'create');
+  for (const operation of value.operations) {
+    operation.id = 'records.farm.create';
+    operation.path = '/v1/records/farms';
+    operation.sourceRecordType = 'farm';
+    operation.responseRecordType = 'farm';
+    operation.recordTypeLabel = 'Farms';
     operation.accessProfile = PROFILE;
-    operation.titleFields = [fieldIds[0]];
-    operation.fields = Object.entries(fields).map(([field, type]) => ({ id: fieldId(field), apiName: field, label: field, schema: { type }, required: true, nullable: false, readOnly: false, removable: false }));
-    operation.readableFields = fieldIds;
-    operation.createWritableFields = operation.operation === 'create' ? fieldIds : [];
-    operation.patchWritableFields = operation.operation === 'patch' ? fieldIds : [];
-  });
-  return value;
-}
-function record(entity, recordId, data, lifecycleState, reviewRejected = false) {
-  const value = baseRecord(Boolean(lifecycleState));
-  value.data.recordIdentifier = recordId;
-  value.data.snapshot = `breg1_${recordId}`;
-  value.data.domainData = data;
-  value.meta.entityTypeIdentifier = entity;
-  if (lifecycleState) {
-    value.data.request.bregState = lifecycleState;
-    value.data.request.actions = lifecycleState === 'draft' ? [{ operation: 'submit_request', method: 'POST', href: `/v1/records/name-corrections/${recordId}/actions/submit?accessProfile=${PROFILE}`, ifMatch: ACTION_ETAG }] : [];
-    if (reviewRejected) {
-      value.data.request.review = {
-        submission: { state: 'accepted', authority: 'casework', requestId: REQUEST_ID,
-          submissionDigest: 'sha256:' + 'a'.repeat(64),
-          policy: { id: 'name-correction', version: '1', digest: 'sha256:' + 'b'.repeat(64) } },
-        result: { state: 'rejected', resultId: REQUEST_ID,
-          completedAt: '2026-09-29T00:00:00Z', availableUntil: '2026-10-06T00:00:00Z' },
-        delivery: { state: 'reconciled', eventId: REQUEST_ID, receivedAt: '2026-09-29T00:00:00Z' },
-        application: { mode: 'manual', state: 'awaitingReview' },
-        recovery: { state: 'none' },
-      };
-    }
+    operation.titleFields = [ids[0]];
+    operation.fields = fields;
+    operation.readableFields = ids;
+    operation.createWritableFields = ids;
   }
   return value;
 }
-async function fixture({ entity = 'farm', currentState = 'draft', currentData, storedData, failStatus, reviewRejected = false } = {}) {
+function record(data) {
+  const value = baseRecord();
+  value.data.recordIdentifier = ID;
+  value.data.domainData = data;
+  value.meta.recordTypeIdentifier = 'farm';
+  value.meta.datasetIdentifier = 'farms';
+  return value;
+}
+async function fixture({ failStatus } = {}) {
   const requests = [];
-  const route = entity === 'farm' ? 'farms' : 'name-corrections';
-  const recordId = entity === 'farm' ? ID : REQUEST_ID;
-  const fields = entity === 'farm' ? { localIdentifier: 'string', name: 'string' } : { record: 'string', name: 'string', reason: 'string', supportingReference: 'string' };
-  const metadataValue = metadata(entity, route, fields);
-  let stored = storedData;
+  const metadataValue = metadata();
+  let stored;
   let mutationCount = 0;
   const server = http.createServer(async (req, res) => {
     let body = '';
@@ -98,27 +73,18 @@ async function fixture({ entity = 'farm', currentState = 'draft', currentData, s
       return;
     }
     if (req.url.includes('/v1/registry')) return res.end(JSON.stringify(metadataValue));
-    if (req.url.includes('/actions/')) {
-      mutationCount++;
-      currentState = 'submitted';
-      const value = record(entity, recordId, stored, 'draft');
-      return res.end(JSON.stringify({ id: recordId, revision: 8, snapshot: `breg1_${recordId}`, request: { bregState: 'submitted', proposalVersion: 7, effectDigest: value.data.request.effectDigest, application: null } }));
-    }
-    res.setHeader('link', `<https://id.registrystack.org/profiles/registry-record/v1>; rel="profile", </tenant/v1/schemas/${entity}>; rel="describedby"`);
+    res.setHeader('link', '<https://id.registrystack.org/profiles/registry-record/v1>; rel="profile", </tenant/v1/schemas/farm>; rel="describedby"');
     res.setHeader('etag', ETAG);
-    if (req.method === 'POST') {
-      const incoming = JSON.parse(body).data;
-      if (!stored) { stored = incoming; mutationCount++; }
-      else if (!isDeepStrictEqual(incoming, stored)) {
-        res.statusCode = 409;
-        res.setHeader('content-type', 'application/problem+json');
-        return res.end(JSON.stringify({ type: 'about:blank', status: 409, code: 'mutation.conflict', traceId: TRACE }));
-      }
-      res.statusCode = 201;
-      res.setHeader('location', `/tenant/v1/records/${route}/${recordId}`);
-      return res.end(JSON.stringify(record(entity, recordId, stored)));
+    const incoming = JSON.parse(body).data;
+    if (!stored) { stored = incoming; mutationCount++; }
+    else if (!isDeepStrictEqual(incoming, stored)) {
+      res.statusCode = 409;
+      res.setHeader('content-type', 'application/problem+json');
+      return res.end(JSON.stringify({ type: 'about:blank', status: 409, code: 'mutation.conflict', traceId: TRACE }));
     }
-    return res.end(JSON.stringify(record(entity, recordId, currentData ?? stored, currentState, reviewRejected)));
+    res.statusCode = 201;
+    res.setHeader('location', `/tenant/v1/records/farms/${ID}`);
+    return res.end(JSON.stringify(record(stored)));
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   return { requests, mutationCount: () => mutationCount, baseUrl: `http://127.0.0.1:${server.address().port}/tenant`, close: () => new Promise(resolve => server.close(resolve)) };
@@ -175,64 +141,6 @@ test('compiled registration invokes the native metadata-selected create and emit
   } finally { await stub.close(); }
 });
 
-test('compiled correction creates a draft, reads its action and submits with a separate idempotency key', async () => {
-  const stub = await fixture({ entity: 'name-correction' });
-  try {
-    const result = await runJob('correction', stub.baseUrl, correctionInput);
-    assert.equal(result.errors, undefined, JSON.stringify(result));
-    assert.deepEqual(result.data, { status: 'submitted', requestId: REQUEST_ID });
-    assertClean(result);
-    const writes = stub.requests.filter(request => request.method === 'POST');
-    assert.equal(writes.length, 2);
-    assert.deepEqual(JSON.parse(writes[0].body), { data: correctionData(correctionInput) });
-    assert.equal(writes[0].headers['idempotency-key'], 'correction:correction-001');
-    assert.equal(writes[1].headers['idempotency-key'], 'correction-submit:correction-001');
-    assert.equal(writes[1].headers['if-match'], ACTION_ETAG);
-    assert.deepEqual(JSON.parse(writes[1].body), {});
-  } finally { await stub.close(); }
-});
-
-test('same correction replay reconciles current state without duplicate lifecycle mutation', async () => {
-  const stub = await fixture({ entity: 'name-correction' });
-  try {
-    const first = await runJob('correction', stub.baseUrl, correctionInput);
-    const replay = await runJob('correction', stub.baseUrl, correctionInput);
-    assert.equal(first.errors, undefined, JSON.stringify(first));
-    assert.equal(replay.errors, undefined, JSON.stringify(replay));
-    assert.deepEqual(replay.data, { status: 'already_submitted', requestId: REQUEST_ID });
-    assert.equal(stub.mutationCount(), 2);
-    assert.equal(stub.requests.filter(request => request.url.includes('/actions/')).length, 1);
-    assertClean(replay);
-  } finally { await stub.close(); }
-});
-
-test('changed correction content is refused before already-submitted classification or action execution', async () => {
-  for (const currentState of ['draft', 'submitted']) {
-    const stub = await fixture({ entity: 'name-correction', currentState, currentData: { ...correctionData(correctionInput), name: 'A different correction' } });
-    try {
-      const result = await runJob('correction', stub.baseUrl, correctionInput);
-      assert.ok(result.errors, JSON.stringify(result));
-      assert.match(result.errors.pilot.message, /Correction content does not match/);
-      assert.equal(stub.requests.length, 3);
-      assert.equal(stub.requests.some(request => request.url.includes('/actions/')), false);
-      assertClean(result);
-    } finally { await stub.close(); }
-  }
-});
-
-test('unknown request states and native failures stop dependent mutations and retain safe failures', async () => {
-  for (const options of [{ entity: 'name-correction', currentState: 'cancelled' }, { entity: 'name-correction', failStatus: 403 }]) {
-    const stub = await fixture(options);
-    try {
-      const result = await runJob('correction', stub.baseUrl, correctionInput);
-      assert.ok(result.errors, JSON.stringify(result));
-      assert.match(result.errors.pilot.message, options.failStatus ? /Registry operation did not complete: denied/ : /Correction is not ready for submission/);
-      assert.equal(stub.requests.some(request => request.url.includes('/actions/')), false);
-      assertClean(result);
-    } finally { await stub.close(); }
-  }
-});
-
 test('unstable submission identifiers fail before any HTTP exchange', async () => {
   const stub = await fixture();
   try {
@@ -261,24 +169,5 @@ test('registration replay reuses the durable key and a changed payload conflicts
     assert.ok(stub.requests.filter(request => request.method === 'POST').every(request => request.headers['idempotency-key'] === 'registration:registration-replay-001'));
     assertClean(replay);
     assertClean(changed);
-  } finally { await stub.close(); }
-});
-
-test('a rejected correction replay returns its existing request without submission or mutation', async () => {
-  // Review decisions live in Casework. BREG remains submitted after rejection.
-  const stub = await fixture({ entity: 'name-correction', currentState: 'submitted', reviewRejected: true, storedData: correctionData(correctionInput) });
-  try {
-    for (let retry = 0; retry < 2; retry++) {
-      const result = await runJob('correction', stub.baseUrl, correctionInput);
-      assert.equal(result.errors, undefined, JSON.stringify(result));
-      assert.deepEqual(result.data, { status: 'already_submitted', requestId: REQUEST_ID });
-      assertClean(result);
-    }
-    assert.equal(stub.mutationCount(), 0);
-    assert.equal(stub.requests.some(request => request.url.includes('/actions/')), false);
-    const replays = stub.requests.filter(request => request.method === 'POST');
-    assert.equal(replays.length, 2);
-    assert.ok(replays.every(request => request.headers['idempotency-key'] === 'correction:correction-001'));
-    for (const request of replays) assert.deepEqual(JSON.parse(request.body).data, correctionData(correctionInput));
   } finally { await stub.close(); }
 });

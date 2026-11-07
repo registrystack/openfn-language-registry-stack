@@ -214,8 +214,13 @@ def prepare_client(runtime_root: Path) -> dict:
             "required": concept.get("required"),
             "form": concept.get("form"),
         })
+    for output in expected_outputs:
+        # The 0.45 client takes the form as a mapping whose `type` names it.
+        if isinstance(output["form"], str):
+            output["form"] = {"type": output["form"]}
     if not expected_outputs or any(
-        output["required"] is not True or output["form"] not in {"boolean", "string", "number", "integer"}
+        output["required"] is not True or not isinstance(output["form"], dict)
+        or output["form"].get("type") not in {"boolean", "string", "number", "integer"}
         for output in expected_outputs
     ):
         raise RuntimeError("the governed Evidence concepts are not supported by this pilot binding")

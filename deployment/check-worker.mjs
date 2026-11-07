@@ -45,7 +45,6 @@ async function executeJob(job, input) {
 const document = projectDocument({
   accessProfile: 'openfn-service',
   createFarmOperation: 'records.farm.create',
-  createCorrectionOperation: 'records.name-correction.create',
   evidenceRequest: {
     responseFormat: 'signed-jws',
     requirement: 'urn:example:requirement:holding-registered:v1',
@@ -65,7 +64,7 @@ const document = projectDocument({
       handle: 'registered',
       concept: 'urn:example:concept:holding-registered:registered',
       required: true,
-      form: 'boolean',
+      form: {type: 'boolean'},
     }],
     maximumAssertionLifetimeSeconds: 300,
     clockSkewSeconds: 30,

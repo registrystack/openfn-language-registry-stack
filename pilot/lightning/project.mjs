@@ -10,7 +10,7 @@ export function id(name) {
 }
 
 export const projectId = id('project');
-export const triggerIds = Object.fromEntries(['registration', 'correction', 'committed'].map(name => [name, id(`${name}:trigger`)]));
+export const triggerIds = Object.fromEntries(['registration', 'committed'].map(name => [name, id(`${name}:trigger`)]));
 
 const checked = `
 fn(state => {
@@ -43,39 +43,6 @@ createRecord(state => ({
 }));
 ${checked}
 fn(state => ({data: {status: 'registered', recordId: state.data.result.value.data.recordIdentifier, traceId: state.data.result.traceId}}));`;
-  const correction = `${validateSubmission}
-createChangeRequest(state => ({
-  operationIdentifier: ${literal(bindings.createCorrectionOperation)}, accessProfile: ${profile},
-  entityIdentifier: 'name-correction', route: 'name-corrections',
-  data: {record: state.data.recordId, name: state.data.name, reason: state.data.reason, supportingReference: state.data.supportingReference},
-  idempotencyKey: 'correction:' + state.data.submissionId,
-  as: 'result'
-}));
-${checked}
-fn(state => ({...state, data: {...state.data, requestId: state.data.result.value.data.recordIdentifier}}));
-getRecord(state => ({route: 'name-corrections', recordIdentifier: state.data.requestId, accessProfile: ${profile}, as: 'result'}));
-${checked}
-fn(async state => {
-  const current = state.data.result.value.data;
-  const expected = {record: state.data.recordId, name: state.data.name, reason: state.data.reason, supportingReference: state.data.supportingReference};
-  if (Object.entries(expected).some(([field, value]) => typeof value !== 'string' || current.domainData[field] !== value)) {
-    throw new Error('Correction content does not match the submitted event');
-  }
-  const request = current.request;
-  const action = request?.actions?.find(action => action.operation === 'submit_request');
-  if (action) {
-    state = await executeLifecycleAction({
-      entityIdentifier: 'name-correction', route: 'name-corrections',
-      recordIdentifier: state.data.requestId, accessProfile: ${profile},
-      operation: 'submit_request', ifMatch: action.ifMatch,
-      idempotencyKey: 'correction-submit:' + state.data.submissionId, as: 'result'
-    })(state);
-    if (state.data.result.branch !== 'succeeded') throw new Error('Correction submission did not complete: ' + state.data.result.branch);
-  } else if (!['submitted', 'applied'].includes(request?.bregState)) {
-    throw new Error('Correction is not ready for submission');
-  }
-  return {data: {status: action ? 'submitted' : 'already_submitted', requestId: state.data.requestId}};
-});`;
   const evidence = `
 fn(state => {
   const event = state.data.event;
@@ -138,10 +105,9 @@ fn(state => ({data: {status: state.data.status, revision: state.data.revision}, 
   }
   return {
     id: projectId, name: 'registry-agriculture-pilot',
-    description: 'Synthetic governed registration, correction, and signed registration evidence.',
+    description: 'Synthetic governed registration and signed registration evidence.',
     workflows: [
       workflow('registration', [['register', '@openfn/language-registry-breg@local', registration, 'breg']]),
-      workflow('correction', [['submit-correction', '@openfn/language-registry-breg@local', correction, 'breg']]),
       workflow('committed', [
         ['verify-registration', '@openfn/language-registry-evidence@local', evidence, 'evidence'],
         ['record-update', '@openfn/language-http@local', destination, 'destination'],

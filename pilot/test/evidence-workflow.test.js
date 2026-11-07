@@ -10,7 +10,7 @@ import { projectDocument } from '../lightning/project.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const bindings = {
-  accessProfile: 'pilot', createFarmOperation: 'create', createCorrectionOperation: 'correct',
+  accessProfile: 'pilot', createFarmOperation: 'create',
   requirement: 'farm-registered', registeredConcept: 'urn:example:concept:registered',
 };
 const revision = `sha256:${'a'.repeat(64)}`;
@@ -27,7 +27,7 @@ bindings.evidenceRequest = {
   expectedAssuranceProfile: 'local',
   subjects: [{role: 'farm', selectorProfile: 'farm-id',
     selectorValues: {'local-identifier': {valueFrom: 'data.values.local-identifier'}}}],
-  expectedOutputs: [{concept: bindings.registeredConcept, form: 'boolean'}],
+  expectedOutputs: [{concept: bindings.registeredConcept, form: {type: 'boolean'}}],
   maximumAssertionLifetimeSeconds: 300,
   clockSkewSeconds: 30,
   subjectExpectations: 'acceptFirstUse',
