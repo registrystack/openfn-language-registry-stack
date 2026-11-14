@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -135,6 +139,44 @@ class ReleaseTupleTests(unittest.TestCase):
         self.assertIn("Build pinned 0.45 images", workflow)
         self.assertEqual(workflow.count("pilot/agriculture/.runtime-0.45/prepared.json"), 2)
         self.assertNotIn("pilot/agriculture/.runtime-0.38/prepared.json", workflow)
+
+    def test_image_build_runs_postgres_ownership_check_with_bash(self) -> None:
+        bash = shutil.which("bash")
+        if bash is None:
+            self.skipTest("bash is required to run the image-build script")
+        dash = shutil.which("dash")
+        if dash is None:
+            self.skipTest("dash is required to exercise the Bash-only script boundary")
+        true = shutil.which("true")
+        if true is None:
+            self.skipTest("true is required to replace Docker with an inert executable")
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            command_directory = Path(temporary_directory)
+            (command_directory / "bash").symlink_to(true)
+            (command_directory / "docker").symlink_to(true)
+            (command_directory / "sh").symlink_to(dash)
+
+            environment = os.environ.copy()
+            environment["PATH"] = f"{command_directory}:{environment['PATH']}"
+            try:
+                result = subprocess.run(
+                    [bash, str(DEPLOYMENT / "build-images.sh"), "--quiet"],
+                    cwd=ROOT,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+            except subprocess.TimeoutExpired as error:
+                stdout = error.stdout or b""
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode(errors="replace")
+                self.fail(f"build-images.sh timed out after these steps:\n{stdout}")
+
+        self.assertIn("Check PostgreSQL private input ownership.", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

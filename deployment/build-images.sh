@@ -27,5 +27,5 @@ build_step 'Check worker engine startup.' docker run --rm --platform linux/amd64
 build_step 'Build the pinned Lightning image.' docker build --platform linux/amd64 -f deployment/Lightning.Dockerfile -t registry-openfn-lightning:pilot-045 .
 build_step 'Build the pilot services image.' docker build --platform linux/amd64 -f deployment/Services.Dockerfile -t registry-openfn-services:pilot-045 .
 build_step 'Build the pinned PostgreSQL image.' docker build --platform linux/amd64 -f deployment/Postgres.Dockerfile -t registry-openfn-postgres:pilot-045 .
-build_step 'Check PostgreSQL private input ownership.' sh deployment/check-postgres.sh
+build_step 'Check PostgreSQL private input ownership.' bash deployment/check-postgres.sh
 build_step 'Build the pinned Registry Stack tools image.' docker build --platform linux/amd64 -f deployment/Tools.Dockerfile -t registry-openfn-tools:pilot-045 .
