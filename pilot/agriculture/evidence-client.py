@@ -14,7 +14,7 @@ import sys
 import yaml
 
 
-DEFAULT_ROOT = Path("/workspace/pilot/agriculture/.runtime-0.38")
+DEFAULT_ROOT = Path("/workspace/pilot/agriculture/.runtime-0.45")
 SCHEMA = "synthetic-agriculture-evidence-client/v1"
 PRIVATE_JWK_FIELDS = {"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -87,10 +87,10 @@ def _atomic_json(path: Path, value: object) -> None:
             pass
 
 
-def _bundle_check(candidate: Path) -> dict:
+def _checked_report(command: list[str], label: str) -> dict:
     try:
         result = subprocess.run(
-            ["evidence", "bundle-check", "--bundle", str(candidate), "--json"],
+            command,
             check=False,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -100,16 +100,37 @@ def _bundle_check(candidate: Path) -> dict:
             env={key: value for key, value in os.environ.items() if key != "REGISTRY_EVIDENCE_RUNTIME"},
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise RuntimeError("the released Evidence bundle validator did not complete") from error
+        raise RuntimeError(f"the released {label} validator did not complete") from error
     if result.returncode:
-        raise RuntimeError("the released Evidence runtime rejected the governed bundle")
+        raise RuntimeError(f"the released {label} validator rejected the governed deployment")
     try:
         report = json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise RuntimeError("the released Evidence runtime returned an invalid bundle report") from error
-    if not isinstance(report, dict) or not DIGEST.fullmatch(str(report.get("packageDigest", ""))):
-        raise RuntimeError("the Evidence bundle report has an invalid package digest")
+        raise RuntimeError(f"the released {label} validator returned an invalid report") from error
+    if (
+        not isinstance(report, dict)
+        or report.get("ok") is not True
+        or not DIGEST.fullmatch(str(report.get("packageDigest", "")))
+    ):
+        raise RuntimeError(f"the {label} report has an invalid package digest")
     return report
+
+
+def _runtime_check(runtime: Path) -> dict:
+    return _checked_report(
+        ["evidence", "check", "--runtime-config", str(runtime), "--format", "json"],
+        "Evidence runtime",
+    )
+
+
+def _authoring_check(project: Path, target: Path) -> dict:
+    return _checked_report(
+        [
+            "evidencectl", "check", str(project), "--target", str(target),
+            "--production", "--format", "json",
+        ],
+        "Evidence authoring",
+    )
 
 
 def _public_jwk(value: object, label: str) -> dict:
@@ -131,14 +152,40 @@ def prepare_client(runtime_root: Path) -> dict:
     """Write the exact explicit Node client configuration and request policy."""
     root = Path(runtime_root).resolve(strict=True)
     candidate = root / "evidence" / "candidate"
-    bundle = _load_yaml(candidate / "evidence.yaml")
-    if not isinstance(bundle, dict) or bundle.get("version") != 1:
+    bundle_root = candidate / "bundle"
+    bundle = _load_yaml(bundle_root / "evidence.yaml")
+    if (
+        not isinstance(bundle, dict)
+        or bundle.get("apiVersion") != "id.registrystack.org/formats/evidence/bundle/v1"
+        or bundle.get("kind") != "EvidenceBundle"
+    ):
         raise RuntimeError("the governed Evidence bundle has an unsupported version")
     if bundle.get("assuranceProfile") != "production":
         raise RuntimeError("the pilot requires the production Evidence assurance profile")
 
+    runtime = root / "evidence" / "runtime.yaml"
+    if not runtime.is_file():
+        runtime = candidate / "runtime.yaml"
+    runtime_report = _runtime_check(runtime)
+    authoring_report = _authoring_check(
+        root / "evidence" / "project",
+        root / "evidence" / "target",
+    )
+    package_report = _load_json(root / "evidence" / "package-report.json")
+    if (
+        not isinstance(package_report, dict)
+        or package_report.get("packageDigest") != runtime_report["packageDigest"]
+        or package_report.get("revision") is not None
+    ):
+        raise RuntimeError("the retained Evidence package report differs from the activated package")
+    if authoring_report["packageDigest"] != runtime_report["packageDigest"]:
+        raise RuntimeError("the authored Evidence target differs from the activated package")
+    if runtime_report.get("requirements") != 1:
+        raise RuntimeError("the activated Evidence package must define one requirement")
+
     requirement = _one(bundle.get("requirements"), "requirement")
-    requirement_id = _string(requirement.get("id"), "requirement id")
+    requirement_id = _string(requirement.get("uri"), "requirement id")
+    requirement_handle = _string(requirement.get("handle"), "requirement handle")
     purpose = _string(_sole(requirement.get("purposes"), "requirement purpose"), "purpose")
     evidence_type = _string(requirement.get("evidenceType"), "evidence type")
     subject_role = _one(requirement.get("subjectRoles"), "subject role")
@@ -156,7 +203,7 @@ def prepare_client(runtime_root: Path) -> dict:
     if not isinstance(selector_fields, dict) or list(selector_fields) != ["local-identifier"]:
         raise RuntimeError("the pilot requires the governed local-identifier selector")
 
-    issuer = _string((bundle.get("issuer") or {}).get("id"), "issuer")
+    issuer = _string((bundle.get("issuer") or {}).get("uri"), "issuer")
     provider = _string((bundle.get("service") or {}).get("providerId"), "provider")
     base_url = _string((bundle.get("service") or {}).get("publicOrigin"), "public origin")
     if base_url != provider or base_url != "https://127.0.0.1:8445":
@@ -167,7 +214,7 @@ def prepare_client(runtime_root: Path) -> dict:
         raise RuntimeError("the governed Evidence bundle must use ES256")
     if signing.get("format") != "flattened-jws-json":
         raise RuntimeError("the governed Evidence bundle must use flattened JWS JSON")
-    active_path = _relative_file(candidate, signing.get("activePublicJwkFile"), "active public JWK")
+    active_path = _relative_file(bundle_root, signing.get("activePublicJwkFile"), "active public JWK")
     active_jwk = _public_jwk(_load_json(active_path), "active public JWK")
     transit_jwk = _public_jwk(
         _load_json(root / "evidence" / "transit-public" / "evidence-signing.jwk.json"),
@@ -179,12 +226,26 @@ def prepare_client(runtime_root: Path) -> dict:
     if not isinstance(revoked, list) or not all(isinstance(value, str) and value for value in revoked):
         raise RuntimeError("the governed Evidence revoked-key list is invalid")
 
-    grant_profiles = bundle.get("authorityProfiles")
+    authority = _load_yaml(candidate / "compiled-authority.yaml")
+    if (
+        not isinstance(authority, dict)
+        or authority.get("apiVersion")
+        != "id.registrystack.org/formats/evidence/compiled-target-authority/v1alpha1"
+        or authority.get("kind") != "EvidenceCompiledTargetAuthority"
+        or authority.get("project") != bundle.get("project")
+        or authority.get("target") != "production"
+    ):
+        raise RuntimeError("the governed Evidence target authority is invalid")
+    grant_profiles = authority.get("accessProfiles")
     if not isinstance(grant_profiles, dict) or len(grant_profiles) != 1:
         raise RuntimeError("the governed Evidence bundle must define one authority profile")
     profile = next(iter(grant_profiles.values()))
-    if not isinstance(profile, dict) or profile.get("kind") != "explicit-request":
-        raise RuntimeError("the governed Evidence authority must use explicit requests")
+    if (
+        not isinstance(profile, dict)
+        or profile.get("kind") != "organizational"
+        or profile.get("actorKind") != "service"
+    ):
+        raise RuntimeError("the governed Evidence authority must identify one service requester")
     grant = _one(profile.get("grants"), "authority grant")
     granted_subject = _one(grant.get("subjects"), "grant subject")
     if (
@@ -192,16 +253,23 @@ def prepare_client(runtime_root: Path) -> dict:
         or grant.get("purpose") != purpose
         or grant.get("audienceFrom") != "authenticated-requester"
         or grant.get("responseFormats") != ["signed-jws"]
+        or grant.get("subjectBindingModes") != ["audience-scoped"]
         or granted_subject.get("role") != role
         or granted_subject.get("selectorProfile") != selector_profile
         or granted_subject.get("valueOrigin") != "request"
     ):
         raise RuntimeError("the governed Evidence authority grant differs from the request policy")
 
-    report = _bundle_check(candidate)
-    revision_entry = _one(report.get("requirements"), "configuration revision")
+    revisions = authoring_report.get("definitionRevisions")
+    if not isinstance(revisions, list):
+        raise RuntimeError("the Evidence authoring report has no definition revisions")
+    matching_revisions = [
+        item for item in revisions
+        if isinstance(item, dict) and item.get("requirement") == requirement_id
+    ]
+    revision_entry = _one(matching_revisions, "configuration revision")
     revision = revision_entry.get("configurationRevision")
-    if revision_entry.get("id") != requirement_id or not isinstance(revision, str) or not DIGEST.fullmatch(revision):
+    if not isinstance(revision, str) or not DIGEST.fullmatch(revision):
         raise RuntimeError("the Evidence bundle report does not bind the governed requirement")
 
     expected_outputs = []
@@ -210,20 +278,16 @@ def prepare_client(runtime_root: Path) -> dict:
             raise RuntimeError("the governed Evidence concept is invalid")
         expected_outputs.append({
             "handle": _string(concept.get("handle"), "concept handle"),
-            "concept": _string(concept.get("id"), "concept id"),
+            "concept": _string(concept.get("uri"), "concept id"),
             "required": concept.get("required"),
-            "form": concept.get("form"),
+            "form": {"type": concept.get("type")},
         })
-    for output in expected_outputs:
-        # The 0.45 client takes the form as a mapping whose `type` names it.
-        if isinstance(output["form"], str):
-            output["form"] = {"type": output["form"]}
     if not expected_outputs or any(
         output["required"] is not True or not isinstance(output["form"], dict)
-        or output["form"].get("type") not in {"boolean", "string", "number", "integer"}
+        or output["form"].get("type") != "boolean"
         for output in expected_outputs
     ):
-        raise RuntimeError("the governed Evidence concepts are not supported by this pilot binding")
+        raise RuntimeError("the governed Evidence output is not the pilot boolean")
 
     index = _load_json(root / "issuer" / "clients.json")
     if not isinstance(index, dict) or index.get("schema") != "synthetic-agriculture-thunderid/v1":
@@ -298,18 +362,23 @@ def prepare_client(runtime_root: Path) -> dict:
             },
         }],
         "expectedOutputs": expected_outputs,
-        "maximumAssertionLifetimeSeconds": signing.get("maximumAssertionValiditySeconds"),
+        "maximumAssertionLifetimeSeconds": requirement.get("validitySeconds"),
         "clockSkewSeconds": signing.get("verifierClockSkewSeconds"),
         "subjectExpectations": "acceptFirstUse",
     }
+    if requirement_handle != "holding-registered":
+        raise RuntimeError("the governed Evidence bundle has an unexpected requirement handle")
     if not isinstance(request["maximumAssertionLifetimeSeconds"], int) or not 1 <= request["maximumAssertionLifetimeSeconds"] <= 31_536_000:
         raise RuntimeError("the governed Evidence assertion lifetime is invalid")
+    maximum_validity = signing.get("maximumAssertionValiditySeconds")
+    if not isinstance(maximum_validity, int) or request["maximumAssertionLifetimeSeconds"] > maximum_validity:
+        raise RuntimeError("the governed Evidence assertion lifetime exceeds the signing ceiling")
     if not isinstance(request["clockSkewSeconds"], int) or not 0 <= request["clockSkewSeconds"] <= 300:
         raise RuntimeError("the governed Evidence clock skew is invalid")
 
     generated = {
         "schema": SCHEMA,
-        "packageDigest": report["packageDigest"],
+        "packageDigest": runtime_report["packageDigest"],
         "evidence": {
             "configuration": {"evidence": configuration},
             "request": request,

@@ -11,5 +11,5 @@ listener "tcp" {
 
 storage "raft" {
   path    = "/openbao/file"
-  node_id = "registry-openfn-pilot-038"
+  node_id = "registry-openfn-pilot-045"
 }

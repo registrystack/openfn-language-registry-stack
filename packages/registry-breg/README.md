@@ -67,6 +67,9 @@ when the next step no longer needs them. The adaptor does not log requests.
 | `continueList` | Exact SDK `continuation` from the previous page. |
 | `createRecord` | `operationIdentifier`, `accessProfile`, `data`, `idempotencyKey`. |
 | `patchRecord` | `operationIdentifier`, `accessProfile`, `recordIdentifier`, `etag`, `operations`, `idempotencyKey`. |
+| `startProposal` | `actionIdentifier`, `accessProfile`, `inputs`, `idempotencyKey`. Selects a declared Action and starts its native Proposal. |
+| `getProposal` | `proposalIdentifier`, `accessProfile`. Reads through the selected Proposal Get authority. |
+| `submitProposal` | `proposalIdentifier`, `accessProfile`, `expectedInputs`, `idempotencyKey`. Rereads the Proposal, requires exact input equality, and submits an available Draft through its native link and condition. |
 
 Reads and lookup accept `select`, `accessProfile`, and `format` (`json` or
 `json-ld`). Lists also accept these. Creates and patches accept
@@ -78,19 +81,21 @@ and validates the HTTP patch document.
 Writes fetch caller-filtered metadata inside the operation and select an opaque
 binding for the exact operation and profile. No function accepts a write URL,
 serialized binding, or arbitrary action URL as authority. Action and
-Proposal metadata remains descriptive; this adaptor does not execute it.
+Proposal metadata remains descriptive outside the native client.
 
-Use the direct read's exact strong ETag for patching. This adaptor has no
-change-request lifecycle operations: the 0.45 client no longer
-has the lifecycle methods. The 0.45 client replaces them with metadata-declared Actions and
-Proposals (`selectAction`, `invokeAction`, `startProposal`), which this adaptor
-does not wrap. See the [read and patch job](./jobs/read-and-patch.js) for a
-synthetic template.
+Use the direct read's exact strong ETag for patching. Proposal operations return
+inert JSON, without an SDK handle or transition links. `submitProposal` returns
+`already_submitted` when the matching Proposal was already submitted, applied,
+or rejected; it sends no second transition. A changed input returns `conflict`.
+Review and Apply remain separate authorities. See the [read and patch
+job](./jobs/read-and-patch.js) and the [pilot correction
+workflow](../../pilot/lightning/project.mjs) for synthetic examples.
 
 ## Failures and recovery
 
 Operations return `branch` values `invalid_request`, `auth_failed`, `denied`,
 `not_found`, `conflict`, `retryable_infrastructure`, `protocol_failed`, or `failed`.
+Proposal submission can also return `already_submitted` for an inert exact replay.
 Failures include a safe `problem` with `code`, `retryable`, and optional HTTP
 `status`. Typed native `code`, `refusalCode`, `reasonCode`, `traceId`, `transportKind`, and
 `tokenKind` may be present at the result level. Exception messages, response

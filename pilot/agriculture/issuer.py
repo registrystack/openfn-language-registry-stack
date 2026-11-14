@@ -194,7 +194,7 @@ def _prepare_tls(root: Path) -> Path:
         "extendedKeyUsage=serverAuth\n"
         "subjectKeyIdentifier=hash\n"
         "authorityKeyIdentifier=keyid,issuer\n"
-        "subjectAltName=IP:127.0.0.1\n",
+        "subjectAltName=IP:127.0.0.1,DNS:issuer\n",
     )
     subprocess.run(
         ["openssl", "x509", "-req", "-sha256", "-days", "365", "-in", str(tls / "server.csr"),
@@ -591,7 +591,7 @@ def _main() -> None:
     parser.add_argument(
         "--runtime-root",
         type=Path,
-        default=Path("/workspace/pilot/agriculture/.runtime-0.38"),
+        default=Path("/workspace/pilot/agriculture/.runtime-0.45"),
     )
     args = parser.parse_args()
     if args.command == "token":

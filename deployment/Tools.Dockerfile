@@ -14,12 +14,12 @@ RUN sed -i \
 COPY deployment/tools.sha256 /tmp/tools.sha256
 RUN set -eu; cd /tmp; \
     for tool in breg bregctl casework caseworkctl evidence evidencectl; do \
-      curl --fail --location --retry 3 --output "$tool-v0.38.0-linux-amd64" "https://github.com/registrystack/registry-stack/releases/download/v0.38.0/$tool-v0.38.0-linux-amd64"; \
+      curl --fail --location --retry 3 --output "$tool-v0.45.0-linux-amd64" "https://github.com/registrystack/registry-stack/releases/download/v0.45.0/$tool-v0.45.0-linux-amd64"; \
     done; \
     sha256sum --check tools.sha256; \
     for tool in breg bregctl casework caseworkctl evidence evidencectl; do \
-      install -m 0755 "$tool-v0.38.0-linux-amd64" "/usr/local/bin/$tool"; \
-      rm "$tool-v0.38.0-linux-amd64"; \
+      install -m 0755 "$tool-v0.45.0-linux-amd64" "/usr/local/bin/$tool"; \
+      rm "$tool-v0.45.0-linux-amd64"; \
     done
 ENTRYPOINT []
 CMD ["python3", "--version"]

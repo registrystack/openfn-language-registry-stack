@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Prepare a fresh, offline Registry Stack 0.38 agriculture pilot."""
+"""Prepare a fresh, offline Registry Stack 0.45 agriculture pilot."""
 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 from pathlib import Path
 import secrets
 import shutil
 import subprocess
-import tempfile
 
 import yaml
 
@@ -18,10 +18,12 @@ from issuer import prepare_issuer
 
 
 HERE = Path(__file__).resolve().parent
-VERSION = "0.38.0"
+VERSION = "0.45.0"
 RESOURCE = "urn:example:audience:agriculture-pilot"
 PROFILE = "breg-8-registry-4-farm-19-by-local-identifier"
 REQUIREMENT = "urn:example:requirement:holding-registered:v1"
+PILOT_NETWORK = ipaddress.ip_network("10.254.0.0/16")
+DEFAULT_PILOT_SUBNET = "10.254.45.0/24"
 
 
 def write(path: Path, value: object) -> None:
@@ -55,9 +57,11 @@ def run(binary: Path | str, *args: object) -> str:
 
 
 def check_versions(bins: Path) -> None:
-    for name in ("bregctl", "caseworkctl", "evidencectl", "evidence"):
+    for name in (
+        "breg", "bregctl", "casework", "caseworkctl", "evidence", "evidencectl"
+    ):
         reported = run(bins / name, "--version").split()[-1]
-        if reported not in {VERSION, VERSION + "-dev"}:
+        if reported != VERSION:
             raise SystemExit(
                 f"{name} reports {reported}; this pilot requires Registry Stack {VERSION}"
             )
@@ -106,10 +110,10 @@ def client_descriptors(root: Path) -> list[dict]:
             "registry_purpose": "starter-learning",
         }, human=True),
         client("openfn-service", ["pilot:submit"], {
-            "registry_actor_kind": "human",
+            "registry_actor_kind": "service",
             "registry_principal": "synthetic-openfn-service",
             "registry_purpose": "agriculture-registration",
-        }, human=True),
+        }),
         client("evidence-source", ["pilot:evidence-source"], {
             "registry_actor_kind": "service",
             "registry_principal": "synthetic-evidence-source",
@@ -130,7 +134,7 @@ def client_descriptors(root: Path) -> list[dict]:
         client("openfn-evidence", ["evidence:request"], {
             "registry_actor_kind": "service",
             "evidence_tags": ["holding-verifier"],
-            "evidence_audience": "urn:example:audience:openfn-pilot",
+            "evidence_audience": RESOURCE,
         }),
     ]
 
@@ -250,8 +254,8 @@ def schema_credentials(registry: Path, destination: Path) -> None:
                     },
                 })
     write(destination, {
-        "apiVersion": "registry.registrystack.org/breg-schema-test-credentials/v1",
-        "kind": "SchemaTestCredentials",
+        "apiVersion": "id.registrystack.org/formats/breg/schema-test-credentials/v1",
+        "kind": "BRegSchemaTestCredentials",
         "bindings": bindings,
     })
 
@@ -263,23 +267,10 @@ def breg_runtime(bindings: dict, *, test: bool) -> dict:
         "openfn": {
             "origin": "http://localhost:8081",
             "path": "/events/breg",
-            "networkProfile": "loopbackDevelopmentHttp",
-            "dnsFamily": "ipv4Only",
+            "networkProfile": "loopback-development-http",
+            "dnsFamily": "ipv4-only",
             "allowedPrivateCidrs": [],
             "hmacSha256KeyRef": "secret:file/openfn-webhook-key",
-            "classificationCeiling": "restricted",
-            "deliveryCeilings": {
-                "attemptTimeoutMilliseconds": 5000,
-                "maximumAttempts": 5,
-            },
-        },
-        "casework": {
-            "origin": "http://localhost:8092",
-            "path": "/events/sources/agricultural-holdings",
-            "networkProfile": "loopbackDevelopmentHttp",
-            "dnsFamily": "ipv4Only",
-            "allowedPrivateCidrs": [],
-            "hmacSha256KeyRef": "secret:file/breg-casework-webhook",
             "classificationCeiling": "restricted",
             "deliveryCeilings": {
                 "attemptTimeoutMilliseconds": 5000,
@@ -305,7 +296,7 @@ def breg_runtime(bindings: dict, *, test: bool) -> dict:
         },
     }
     return {
-        "apiVersion": "registry.registrystack.org/breg-runtime/v1alpha1",
+        "apiVersion": "id.registrystack.org/formats/breg/runtime/v1alpha1",
         "kind": "BRegRuntimeConfig",
         "listener": {
             "bind": "127.0.0.1:8090",
@@ -313,15 +304,15 @@ def breg_runtime(bindings: dict, *, test: bool) -> dict:
         },
         "identity": {
             "environment": "local",
-            "instanceId": "agriculture-openfn-pilot-038",
-            "databaseId": "agriculture-pilot-038-db",
+            "instanceId": "agriculture-openfn-pilot-045",
+            "databaseId": "agriculture-pilot-045-db",
             "databaseInitializationEnvironment": "local",
         },
         "secretProviders": {"file": {"root": "/config/breg/secrets"}},
         "database": {
             "runtimeUrlRef": f"secret:file/{prefix}runtime-database-url",
             "migrationUrlRef": f"secret:file/{prefix}migration-database-url",
-            "pool": {"maxSize": 4},
+            "pool": {"maximumConnections": 4},
             "roles": {
                 "migration": "agriculture_migration",
                 "runtime": "agriculture_runtime",
@@ -343,12 +334,10 @@ def breg_runtime(bindings: dict, *, test: bool) -> dict:
                         "evidence-source", "casework-reader",
                     )
                 ],
-                "assertionIssuers": {},
-                "deniedKids": [],
-                "maxTokenLifetimeSeconds": 300,
+                "maximumTokenLifetimeSeconds": 300,
                 "leewayMilliseconds": 30000,
                 "jwksSource": {
-                    "kind": "static",
+                    "type": "static",
                     "documentRef": "secret:file/issuer-jwks",
                 },
             },
@@ -366,15 +355,27 @@ def breg_runtime(bindings: dict, *, test: bool) -> dict:
             ),
         },
         "cursor": {"secretRef": "secret:file/cursor-key"},
-        "eventDestinations": event_destinations,
-        "eventDelivery": {"payloadRetentionDays": 1},
+        "destinations": {"hooks": event_destinations},
+        "retention": {"hookPayloadRetentionDays": 1},
         "reviewAuthorities": review_authorities,
     }
 
 
-def prepare_casework(root: Path, bins: Path, bindings: dict) -> None:
+def prepare_casework(root: Path, bindings: dict) -> None:
     casework = root / "casework"
-    shutil.copytree(HERE / "casework", casework / "project")
+    source_root = HERE / "casework"
+    stale_export_root = (source_root / "sources").resolve()
+
+    def omit_stale_provider_export(directory: str, names: list[str]) -> list[str]:
+        if Path(directory).resolve() == stale_export_root:
+            return ["agricultural-holdings.json"]
+        return []
+
+    shutil.copytree(
+        source_root,
+        casework / "project",
+        ignore=omit_stale_provider_export,
+    )
     policy = casework / "project" / "casework.yaml"
     body = policy.read_text(encoding="utf-8")
     if body.count("__CASEWORK_PRODUCER_SUBJECT__") != 1:
@@ -385,39 +386,16 @@ def prepare_casework(root: Path, bins: Path, bindings: dict) -> None:
     )
     policy.write_text(body, encoding="utf-8")
     policy.chmod(0o600)
-    write(
-        casework / "check-report.json",
-        run(bins / "caseworkctl", "check", casework / "project", "--format", "json"),
-    )
-    write(
-        casework / "test-report.json",
-        run(bins / "caseworkctl", "test", casework / "project", "--format", "json"),
-    )
-    package_report = json.loads(run(
-        bins / "caseworkctl", "package", casework / "project",
-        "--output", casework / "package",
-        "--revision", "agriculture-openfn-pilot-0.38.0",
-        "--format", "json",
-    ))
-    write(casework / "package-report.json", package_report)
     write(casework / "secrets" / "casework-audit-key", secrets.token_hex(32))
-    shutil.copyfile(
-        root / "breg" / "secrets" / "breg-casework-webhook",
-        casework / "secrets" / "breg-casework-webhook",
-    )
-    (casework / "secrets" / "breg-casework-webhook").chmod(0o600)
     reader = bindings["clients"]["casework-reader"]
     write(casework / "secrets" / "breg-reader-client-id", reader["clientId"])
     shutil.copyfile(reader["privateJwk"], casework / "secrets" / "breg-reader-key")
     (casework / "secrets" / "breg-reader-key").chmod(0o600)
-    write(casework / "runtime.yaml", {
-        "apiVersion": "registry.registrystack.org/casework-runtime/v1alpha1",
+    write(casework / "runtime-template.yaml", {
+        "apiVersion": "id.registrystack.org/formats/casework/runtime/v1alpha1",
         "kind": "CaseworkRuntimeConfig",
-        "identity": {"databaseId": "agriculture-casework-pilot-038"},
-        "package": {
-            "root": "/config/casework/package",
-            "expectedDigest": package_report["packageDigest"],
-        },
+        "identity": {"databaseId": "agriculture-casework-pilot-045"},
+        "package": {"root": "/config/casework/package"},
         "listener": {
             "bind": "127.0.0.1:8092",
             "tlsTermination": "development-loopback",
@@ -434,7 +412,7 @@ def prepare_casework(root: Path, bins: Path, bindings: dict) -> None:
             "audience": bindings["resource"],
             "scopeClaim": "scope",
             "jwksSource": {
-                "kind": "static",
+                "type": "static",
                 "documentRef": "secret:file/issuer-jwks",
             },
             "allowedClients": [
@@ -452,76 +430,44 @@ def prepare_casework(root: Path, bins: Path, bindings: dict) -> None:
             "path": "/var/lib/registry-casework/audit.ndjson",
             "hashKeyRef": "secret:file/casework-audit-key",
         },
-        "sources": {"agricultural-holdings": {
+        "contextProviders": {"agricultural-holdings": {
             "baseUrl": "http://127.0.0.1:8090",
-            "readerProfile": "casework-reader",
+            "statusProfile": "casework-reader",
             "tokenEndpoint": bindings["tokenEndpoint"],
             "clientAssertionAudience": bindings["clientAssertionAudience"],
             "resource": bindings["resource"],
             "scopes": ["casework:source-reader"],
             "clientIdRef": "secret:file/breg-reader-client-id",
             "clientAssertionKeyRef": "secret:file/breg-reader-key",
-            "trustedRootCertificatesRef": "secret:file/pilot-ca.pem",
-            "webhookSecretRef": "secret:file/breg-casework-webhook",
-            "eventSource": (
-                "urn:registrystack:registry:agricultural-holdings:"
-                "instance:agriculture-openfn-pilot-038"
-            ),
         }},
     })
 
 
-def prepare_evidence(root: Path, bins: Path, bindings: dict) -> int:
+def validate_pilot_subnet(value: str) -> str:
+    try:
+        network = ipaddress.ip_network(value, strict=True)
+    except ValueError as error:
+        raise ValueError("PILOT_SUBNET must be a canonical IPv4 /24 inside 10.254.0.0/16") from error
+    if not isinstance(network, ipaddress.IPv4Network) or network.prefixlen != 24:
+        raise ValueError("PILOT_SUBNET must be a /24 inside 10.254.0.0/16")
+    if not network.subnet_of(PILOT_NETWORK):
+        raise ValueError("PILOT_SUBNET must be inside 10.254.0.0/16")
+    return str(network)
+
+
+def bind_evidence_subnet(project: Path, subnet: str) -> None:
+    for relative in ("production-target.yaml", "targets/production/settings.yaml"):
+        path = project / relative
+        target = yaml.safe_load(path.read_text(encoding="utf-8"))
+        target["connections"]["registry"]["allowedPrivateCidrs"] = [subnet]
+        path.write_text(yaml.safe_dump(target, sort_keys=False), encoding="utf-8")
+
+
+def prepare_evidence(root: Path, bins: Path, bindings: dict, pilot_subnet: str) -> None:
     evidence = root / "evidence"
     project = evidence / "project"
     shutil.copytree(HERE / "evidence-starter", project)
-    write(
-        project / "evidence-project.yaml",
-        "version: 1\nproject: evidence-authoring\n",
-    )
-    export = evidence / "source-export"
-    run(
-        bins / "bregctl", "generate", "evidence-source",
-        root / "breg" / "registry",
-        "--access-profile", "evidence-source",
-        "--entity", "farm",
-        "--selector", "by-local-identifier",
-        "--fields", "local-identifier",
-        "--source-id", "holding-register",
-        "--connection", "registry",
-        "--output", export,
-    )
-    with tempfile.TemporaryDirectory(
-        prefix=".evidence-authoring-", dir=root
-    ) as temporary:
-        temporary_root = Path(temporary)
-        run(
-            bins / "evidencectl", "keygen", "signing",
-            "--output-dir", temporary_root / "key",
-        )
-        run(
-            bins / "evidencectl", "target", "new", temporary_root / "target",
-            "--settings", project / "targets" / "production" / "settings.yaml",
-            "--signing-public-key",
-            temporary_root / "key" / "signing-p256-public.jwk.json",
-        )
-        run(
-            bins / "evidencectl", "source", "import", export,
-            "--project", project,
-            "--target", temporary_root / "target",
-        )
-        check = run(
-            bins / "evidencectl", "check", project,
-            "--target", temporary_root / "target",
-            "--production", "--format", "json",
-        )
-        fixtures = run(
-            bins / "evidencectl", "test", project,
-            "--target", temporary_root / "target",
-            "--format", "json",
-        )
-    write(evidence / "check-report.json", check)
-    write(evidence / "fixture-report.json", fixtures)
+    bind_evidence_subnet(project, pilot_subnet)
     (evidence / "secrets").mkdir(mode=0o700)
     for name in ("audit-hmac-key", "subject-binding-hmac-key"):
         run(
@@ -534,12 +480,34 @@ def prepare_evidence(root: Path, bins: Path, bindings: dict) -> int:
         source["privateJwk"], evidence / "secrets" / "registry-client-key"
     )
     (evidence / "secrets" / "registry-client-key").chmod(0o600)
-    return int(json.loads(fixtures)["evaluatedCases"])
 
 
-def prepare(root: Path, bins: Path) -> None:
+def workflow_bindings() -> dict:
+    return {
+        "breg": {
+            "accessProfile": "openfn-service",
+            "farmEntity": "farm",
+            "farmCreateOperation": "records.farm.create",
+            "selector": "by-local-identifier",
+            "correctionAction": "correct-farm-name",
+            "correctionAccessProfile": "openfn-service",
+        },
+        "evidence": {
+            "requirement": "holding-registered",
+            "requirementId": REQUIREMENT,
+            "selectorProfile": PROFILE,
+            "purpose": "holding-verification",
+            "registeredConcept": (
+                "urn:example:concept:holding-registered:registered"
+            ),
+        },
+    }
+
+
+def prepare(root: Path, bins: Path, pilot_subnet: str = DEFAULT_PILOT_SUBNET) -> None:
     if root.exists():
         raise SystemExit("Output exists. Retain it, or choose a new --output directory.")
+    pilot_subnet = validate_pilot_subnet(pilot_subnet)
     check_versions(bins)
     os.environ["PATH"] = str(bins) + os.pathsep + os.environ.get("PATH", "")
     os.environ["EVIDENCE_BIN"] = str(bins / "evidence")
@@ -571,7 +539,7 @@ def prepare(root: Path, bins: Path) -> None:
         run(bins / "bregctl", "check", breg / "registry", "--format", "json"),
     )
     for name in (
-        "audit-key", "cursor-key", "openfn-webhook-key", "breg-casework-webhook"
+        "audit-key", "cursor-key", "openfn-webhook-key"
     ):
         write(breg / "secrets" / name, secrets.token_hex(32))
     producer = bindings["clients"]["casework-producer"]
@@ -604,8 +572,8 @@ def prepare(root: Path, bins: Path) -> None:
         (breg / "secrets" / "database-ca.pem").read_text(encoding="utf-8")
         + ca_bundle.read_text(encoding="utf-8"),
     )
-    prepare_casework(root, bins, bindings)
-    fixture_count = prepare_evidence(root, bins, bindings)
+    prepare_casework(root, bindings)
+    prepare_evidence(root, bins, bindings, pilot_subnet)
 
     evidence_client = bindings["clients"]["openfn-evidence"]
     client_key = root / "evidence-client" / "keys" / "signing-p256-private-jwk"
@@ -620,7 +588,7 @@ def prepare(root: Path, bins: Path) -> None:
     events = {}
     for event in ("farm-created-v1", "farm-patched-v1"):
         sample = json.loads(run(
-            bins / "bregctl", "webhook", "sample", breg / "registry",
+            bins / "bregctl", "hook", "sample", breg / "registry",
             "--event", event, "--format", "json",
         ))
         events[event] = {
@@ -632,7 +600,7 @@ def prepare(root: Path, bins: Path) -> None:
     write(
         root / "bridge" / "expected-source",
         "urn:registrystack:registry:agricultural-holdings:"
-        "instance:agriculture-openfn-pilot-038",
+        "instance:agriculture-openfn-pilot-045",
     )
 
     openfn = bindings["clients"]["openfn-service"]
@@ -650,35 +618,17 @@ def prepare(root: Path, bins: Path) -> None:
             "trustedRootCertificates": ca_bundle.read_text(encoding="utf-8"),
         }},
     }})
-    write(root / "workflow-bindings.json", {
-        "breg": {
-            "accessProfile": "openfn-service",
-            "farmEntity": "farm",
-            "farmCreateOperation": "records.farm.create",
-            "selector": "by-local-identifier",
-            "correctionEntity": "name-correction",
-            "correctionCreateOperation": "records.name-correction.create",
-            "correctionSubmitOperation": "records.name-correction.request.submit",
-        },
-        "evidence": {
-            "requirement": "holding-registered",
-            "requirementId": REQUIREMENT,
-            "selectorProfile": PROFILE,
-            "purpose": "holding-verification",
-            "registeredConcept": (
-                "urn:example:concept:holding-registered:registered"
-            ),
-        },
-    })
+    write(root / "workflow-bindings.json", workflow_bindings())
     write(root / "prepared.json", {
         "schema": "synthetic-agriculture-pilot/v1",
         "version": VERSION,
-        "fixtures": fixture_count,
+        "pilotSubnet": pilot_subnet,
+        "fixtures": "pending-transit-public-key",
         "evidencePackage": "pending-transit-public-key",
     })
     secure_prepared_tree(root)
     print(
-        "Prepared isolated Registry Stack 0.38 BReg, Casework, "
+        "Prepared isolated Registry Stack 0.45 BReg, Casework, "
         "and Evidence authoring inputs."
     )
 
@@ -686,8 +636,9 @@ def prepare(root: Path, bins: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin-dir", type=Path, required=True)
+    parser.add_argument("--pilot-subnet", default=DEFAULT_PILOT_SUBNET)
     parser.add_argument(
-        "--output", type=Path, default=HERE / ".runtime-0.38"
+        "--output", type=Path, default=HERE / ".runtime-0.45"
     )
     arguments = parser.parse_args()
-    prepare(arguments.output.resolve(), arguments.bin_dir.resolve())
+    prepare(arguments.output.resolve(), arguments.bin_dir.resolve(), arguments.pilot_subnet)

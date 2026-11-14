@@ -1,0 +1,22 @@
+# Legacy pre-v0.45 authority location, retained but not used by the active target.
+apiVersion: id.registrystack.org/formats/evidence/target-authority/v1alpha1
+kind: EvidenceTargetAuthority
+target: production
+project: agriculture-holding-evidence
+accessProfiles:
+  holding-verifier:
+    authority: organizational
+    actorKind: service
+    requesterTags:
+    - holding-verifier
+    grants:
+    - definition: holding-registered
+      purpose: holding-verification
+      audienceFrom: authenticated-requester
+      representations:
+      - signed-jws
+      subjectBinding: audience-scoped
+      subjects:
+      - role: subject
+        selectorProfile: breg-8-registry-4-farm-19-by-local-identifier
+        valueOrigin: request

@@ -1,73 +1,78 @@
-apiVersion: registry.registrystack.org/casework/v1alpha1
+apiVersion: id.registrystack.org/formats/casework/project/v1alpha1
 kind: CaseworkProject
-casework:
+project:
   id: agriculture-review
-  version: "1"
+  version: "2"
 accessProfiles:
-  - id: reviewer
+  reviewer:
     principalClaim: registry_principal
     requiredScopes: [casework:staff]
     role: staff
-  - id: supervisor
+  supervisor:
     principalClaim: registry_principal
     requiredScopes: [casework:supervisor]
     role: supervisor
-  - id: administrator
+  administrator:
     principalClaim: registry_principal
     requiredScopes: [casework:admin]
     role: administrator
-  - id: integration-requester
+  integration-requester:
     principalClaim: sub
     requiredScopes: [casework:reviews:request]
     role: requester
-sources:
-  - id: agricultural-holdings
-    adapter: breg
-    description: sources/agricultural-holdings.json
-    requests:
-      - entity: name-correction
-        queue: corrections
-        contextProjection:
-          - record
-          - name
-          - reason
-          - supporting-reference
+contextProviders:
+  agricultural-holdings:
+    capabilities: [human-display, service-status]
+    sourceNamespace: agricultural-holdings
+    deploymentRef: agricultural-holdings
+    serviceProfiles:
+      service-status: casework-reader
 queues:
-  - id: corrections
+  corrections:
     label: Agricultural holding name corrections
-reviewKinds:
-  - id: name-correction
-    version: "1"
+reviewPolicies:
+  name-correction:
+    version: "2"
     purpose: approval
-    contextStrategy: source
+    context:
+      mode: current-source
+      provider: agricultural-holdings
+      contract:
+        id: urn:registry:breg:review-context:agricultural-holdings:correct-farm-name:farm-name-context
+        revision: sha256:54ec76f0558c42b3e698f3209fb1b8f53d0c9cc4e343edf7d98bbf757c0f2d2b
+        schemaDigest: sha256:0bcdce5b1d3ae5d51328c3fb79d0c86f20b384bfc3cfa5b834bc681a11e7f4f0
     stages:
       - id: review
         queue: corrections
         decidingProfiles: [reviewer]
-        excludeInitiator: true
+        excludeInitiator: false
         requiredApprovals: 1
     retention:
-      terminalDays: 30
-      accountabilityDays: 365
+      terminalRetentionDays: 30
+      accountabilityRetentionDays: 365
     displaySchema:
-      type: object
-      additionalProperties: false
-      properties:
-        record: {type: string, format: uuid}
-        name: {type: string, minLength: 1, maxLength: 160}
-        reason: {type: string, minLength: 1, maxLength: 500}
-        supportingReference: {type: string, minLength: 1, maxLength: 500}
+      $ref: schemas/name-correction.schema.json
     outcomes:
-      - id: changes-requested
-        label: Request changes
-        settlement: changes_requested
+      approved:
+        label: Approve correction
+        settlement: approved
+        reasonRequired: false
+        publicReason: optional
+      rejected:
+        label: Reject correction
+        settlement: rejected
         reasonRequired: true
-reviewProducers:
-  - id: registry-breg
+        publicReason: required
+      changes-requested:
+        label: Request changes
+        settlement: changes-requested
+        reasonRequired: true
+        publicReason: required
+trustedProducers:
+  registry-breg:
     profile: integration-requester
     issuer: https://127.0.0.1:8443
     subject: __CASEWORK_PRODUCER_SUBJECT__
-    trustedInitiatorIssuer: https://127.0.0.1:8443
     sourceNamespaces: [agricultural-holdings]
-    kinds: [name-correction]
-    recoveryDays: 7
+    reviewPolicies: [name-correction]
+    retention: {receiptRetentionDays: 7}

@@ -54,10 +54,11 @@ class BaseRegistryClient extends breg.BaseRegistryClient {
 for (const [method, indexes] of [
   ["getRecord", [2]], ["listRecords", [1]], ["continueList", [0]],
   ["lookupRecord", [2, 3]], ["createRecord", [1]], ["patchRecord", [3]],
+  ["startProposal", [1]], ["prepareProposal", [2]],
 ]) {
   BaseRegistryClient.prototype[method] = function (...args) {
     for (const index of indexes) if (args[index] !== undefined) args[index] = copy(args[index]);
     return breg.BaseRegistryClient.prototype[method].apply(this, args);
   };
 }
-module.exports = { BaseRegistryClient, BaseRegistryClientError };
+module.exports = { BaseRegistryClient, BaseRegistryClientError, copy };

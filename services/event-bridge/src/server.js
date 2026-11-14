@@ -141,10 +141,11 @@ function readBody(request, limit) {
 
 function verifyData(data, config, binding) {
   const fields = binding.valueFields ?? config.allowedValueFields;
-  const keys = ['entity', 'recordId', 'revision', 'trigger', 'packageRevision', 'values'];
+  const recordTypeKey = object(data) && Object.hasOwn(data, 'recordType') ? 'recordType' : 'entity';
+  const keys = [recordTypeKey, 'recordId', 'revision', 'trigger', 'packageRevision', 'values'];
   if (binding.trigger === 'request_lifecycle') keys.push('request');
   if (!object(data) || Object.keys(data).length !== keys.length || keys.some(key => !Object.hasOwn(data, key)) ||
-      data.entity !== (binding.entity ?? config.expectedEntity) || typeof data.recordId !== 'string' || !UUID.test(data.recordId) ||
+      data[recordTypeKey] !== (binding.entity ?? config.expectedEntity) || typeof data.recordId !== 'string' || !UUID.test(data.recordId) ||
       !Number.isSafeInteger(data.revision) || data.revision < 1 ||
       typeof data.packageRevision !== 'string' || !DIGEST.test(data.packageRevision) ||
       !['created', 'patched', 'request_lifecycle'].includes(data.trigger) ||

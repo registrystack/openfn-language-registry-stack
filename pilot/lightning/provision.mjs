@@ -112,7 +112,7 @@ async function prepareEnvironment(files, secrets) {
   }
 }
 
-export async function run(command = 'prepare', runtime = 'pilot/agriculture/.runtime-0.38', {
+export async function run(command = 'prepare', runtime = 'pilot/agriculture/.runtime-0.45', {
   base = process.env.OPENFN_URL ?? 'http://127.0.0.1:4010', fetchImpl = fetch,
 } = {}) {
   runtime = resolve(runtime);
@@ -151,6 +151,8 @@ export async function run(command = 'prepare', runtime = 'pilot/agriculture/.run
   const bindings = {
     accessProfile: generated.breg.accessProfile,
     createFarmOperation: generated.breg.farmCreateOperation,
+    correctionAction: generated.breg.correctionAction,
+    correctionAccessProfile: generated.breg.correctionAccessProfile,
     requirement: generated.evidence.requirement,
     registeredConcept: generated.evidence.registeredConcept,
     evidenceRequest: generated.evidence.request,

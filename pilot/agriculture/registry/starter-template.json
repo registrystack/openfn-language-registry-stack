@@ -13,11 +13,11 @@
     "license": "CC-BY-4.0"
   },
   "review": {
-    "entity": "name-correction",
+    "action": "correct-farm-name",
     "field": "name",
     "submitter": "editor",
     "reviewer": "reviewer",
-    "applier": "reviewer",
+    "applier": "correction-applier",
     "description": "A distinct reviewer approves a fixed name correction. Approval leaves the record unchanged until the reviewer applies the frozen effect."
   },
   "scopeNotes": [

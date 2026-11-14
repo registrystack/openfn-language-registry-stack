@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Activate the fresh 0.38 core, then package the Transit-bound Evidence service."""
+"""Activate the fresh 0.45 core, then package the Transit-bound Evidence service."""
 
 from __future__ import annotations
 
@@ -135,6 +135,29 @@ def run(binary: str, *args: object) -> str:
     return result.stdout
 
 
+def activate_evidence_authority(runtime: Path, document: Path) -> str:
+    result = subprocess.run(
+        [
+            "evidence", "authority", "activate",
+            "--runtime-config", str(runtime),
+            "--document", str(document),
+            "--operator-reference", "agriculture-openfn-pilot-0.45.0",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode == 0:
+        return "applied"
+    if "is already active for this package as sequence" in result.stderr:
+        return "already-active"
+    raise RuntimeError(
+        f"evidence authority activate failed (exit {result.returncode}); "
+        "raw output was withheld"
+    )
+
+
 def save(path: Path, value: object) -> None:
     temporary = path.with_name(path.name + ".tmp")
     if isinstance(value, str):
@@ -184,7 +207,7 @@ def initialize_breg() -> None:
         report = run(
             "bregctl", "--format", "json", "package", breg / "registry",
             "--test-receipt", receipt,
-            "--revision", "agriculture-openfn-pilot-0.38.0",
+            "--revision", "agriculture-openfn-pilot-0.45.0",
             "--output", build,
         )
         save(breg / "package-report.json", report)
@@ -209,25 +232,79 @@ def initialize_breg() -> None:
 
 def initialize_casework() -> None:
     casework = ROOT / "casework"
+    project = casework / "project"
     runtime = casework / "runtime.yaml"
     if (casework / "initialized.json").exists():
-        run("caseworkctl", "status", "--runtime-config", runtime, "--format", "json")
+        marker = json.loads((casework / "initialized.json").read_text(encoding="utf-8"))
+        status = json.loads(run(
+            "caseworkctl", "status", "--runtime-config", runtime, "--format", "json"
+        ))
+        active = (status.get("activation") or {}).get("active") or {}
+        if active.get("packageDigest") != marker.get("packageDigest"):
+            raise RuntimeError("active Casework package differs from the retained pilot package")
         return
-    plan = run(
-        "caseworkctl", "plan", "--runtime-config", runtime, "--format", "json"
+    package = casework / "package"
+    breg_package = ROOT / "breg" / "build" / "package"
+    if not package.exists():
+        paired = run(
+            "caseworkctl", "--format", "json", "provider", "pair", project,
+            "--provider-id", "agricultural-holdings",
+            "--breg-package", breg_package,
+            "--action-id", "correct-farm-name",
+            "--apply",
+        )
+        save(casework / "provider-pair-report.json", paired)
+        checked = run(
+            "caseworkctl", "check", project,
+            "--production",
+            "--against-breg-package", breg_package,
+            "--provider-id", "agricultural-holdings",
+            "--format", "json",
+        )
+        save(casework / "check-report.json", checked)
+        tested = run("caseworkctl", "test", project, "--format", "json")
+        save(casework / "test-report.json", tested)
+        packaged = run(
+            "caseworkctl", "package", project,
+            "--output", package,
+            "--revision", "agriculture-openfn-pilot-0.45.0-policy-2",
+            "--format", "json",
+        )
+        save(casework / "package-report.json", packaged)
+    package_report = json.loads(
+        (casework / "package-report.json").read_text(encoding="utf-8")
     )
-    save(casework / "plan-report.json", plan)
-    applied = run(
-        "caseworkctl", "apply", "--runtime-config", runtime,
-        "--operator-reference", "agriculture-openfn-pilot-0.38.0",
-        "--format", "json",
+    configuration = yaml.safe_load(
+        (casework / "runtime-template.yaml").read_text(encoding="utf-8")
     )
-    report = json.loads(applied)
-    save(casework / "apply-report.json", report)
-    run("caseworkctl", "status", "--runtime-config", runtime, "--format", "json")
+    configuration["package"]["expectedDigest"] = package_report["packageDigest"]
+    save(runtime, configuration)
+    if (casework / "apply-report.json").exists():
+        report = json.loads((casework / "apply-report.json").read_text(encoding="utf-8"))
+    else:
+        plan = run(
+            "caseworkctl", "plan", "--runtime-config", runtime, "--format", "json"
+        )
+        save(casework / "plan-report.json", plan)
+        applied = run(
+            "caseworkctl", "apply", "--runtime-config", runtime,
+            "--operator-reference", "agriculture-openfn-pilot-0.45.0-policy-2",
+            "--format", "json",
+        )
+        report = json.loads(applied)
+        save(casework / "apply-report.json", report)
+    applied_digest = (report.get("activation") or {}).get("packageDigest")
+    if applied_digest != package_report["packageDigest"]:
+        raise RuntimeError("Casework applied package differs from the rehearsed package")
+    status = json.loads(run(
+        "caseworkctl", "status", "--runtime-config", runtime, "--format", "json"
+    ))
+    active = (status.get("activation") or {}).get("active") or {}
+    if active.get("packageDigest") != applied_digest:
+        raise RuntimeError("active Casework package differs from the rehearsed package")
     save(
         casework / "initialized.json",
-        {"packageDigest": report["packageDigest"]},
+        {"packageDigest": applied_digest},
     )
 
 
@@ -354,12 +431,38 @@ def prepare_evidence_client() -> None:
     save(bindings_path, bindings)
 
 
+def verify_evidence_authority(runtime: Path, project: Path, target: Path) -> None:
+    authored = json.loads(run(
+        "evidencectl", "check", project, "--target", target,
+        "--production", "--format", "json",
+    ))
+    authority = authored.get("authority") or {}
+    expected = (
+        authority.get("authorityRevision"),
+        authority.get("digest"),
+        authored.get("packageDigest"),
+    )
+    if any(not isinstance(value, str) or not value.startswith("sha256:")
+           for value in expected):
+        raise RuntimeError("Evidence authoring report has no exact authority identity")
+    history = run(
+        "evidence", "authority", "history", "--runtime-config", runtime,
+    ).strip().splitlines()
+    if not history:
+        raise RuntimeError("Evidence has no active target authority")
+    latest = history[-1].split()
+    if len(latest) != 4 or not latest[0].isdigit() or tuple(latest[1:]) != expected:
+        raise RuntimeError("active Evidence authority differs from the authored pilot target")
+
+
 def initialize_evidence() -> None:
     evidence = ROOT / "evidence"
+    deployed = Path("/config/evidence")
     runtime = evidence / "runtime.yaml"
     os.environ["SSL_CERT_FILE"] = str(ROOT / "tls" / "ca.pem")
     if (evidence / "initialized.json").exists():
         run("evidencectl", "doctor", "--runtime-config", runtime)
+        verify_evidence_authority(runtime, evidence / "project", evidence / "target")
         prepare_evidence_client()
         print("Transit-bound Evidence package verified.")
         return
@@ -370,63 +473,93 @@ def initialize_evidence() -> None:
         raise RuntimeError(
             "OpenBao has not exported the pinned Transit version 1 public JWK"
         )
+    project_public_key = (
+        evidence / "project" / "public-keys" / "evidence-signing.jwk.json"
+    )
+    project_public_key.parent.mkdir(mode=0o700, exist_ok=True)
+    shutil.copyfile(public_key, project_public_key)
+    project_public_key.chmod(0o600)
     target = evidence / "target"
     if not target.exists():
         run(
-            "evidencectl", "target", "new", target,
-            "--settings",
-            evidence / "project" / "targets" / "production" / "settings.yaml",
-            "--signing-public-key", public_key,
+            "evidencectl", "target", "new", deployed / "target",
+            "--settings", deployed / "project" / "production-target.yaml",
         )
-    source_import = run(
-        "evidencectl", "source", "import", evidence / "source-export",
-        "--project", evidence / "project", "--target", target,
-    )
-    save(evidence / "source-import-report.json", source_import)
     run(
-        "evidencectl", "check", evidence / "project",
-        "--target", target, "--production",
+        "evidencectl", "check", deployed / "project",
+        "--target", deployed / "target", "--production",
     )
     fixtures = run(
-        "evidencectl", "test", evidence / "project",
-        "--target", target, "--format", "json",
+        "evidencectl", "test", deployed / "project",
+        "--target", deployed / "target", "--format", "json",
     )
     save(evidence / "transit-fixture-report.json", fixtures)
     candidate = evidence / "candidate"
-    if not (candidate / "evidence.yaml").exists():
+    if not (candidate / "bundle").is_dir():
         if candidate.exists():
             raise RuntimeError(
                 "incomplete Evidence candidate exists; inspect it before retrying"
             )
         package = run(
-            "evidencectl", "package", evidence / "project",
-            "--target", target,
-            "--output", candidate,
-            "--revision", "agriculture-openfn-pilot-0.38.0",
+            "evidencectl", "package", deployed / "project",
+            "--target", deployed / "target",
+            "--output", deployed / "candidate",
             "--format", "json",
         )
         save(evidence / "package-report.json", package)
-    target_runtime = target / "runtime.yaml"
+    compiled_bundle = candidate / "bundle"
+    installed_bundle = evidence / "package"
+    if installed_bundle.exists():
+        if not installed_bundle.is_dir():
+            raise RuntimeError("retained Evidence package path is not a directory")
+        compiled_files = {
+            path.relative_to(compiled_bundle): path.read_bytes()
+            for path in compiled_bundle.rglob("*") if path.is_file()
+        }
+        installed_files = {
+            path.relative_to(installed_bundle): path.read_bytes()
+            for path in installed_bundle.rglob("*") if path.is_file()
+        }
+        if installed_files != compiled_files:
+            raise RuntimeError("installed Evidence package differs from the compiled candidate")
+    else:
+        shutil.copytree(compiled_bundle, installed_bundle)
+    target_runtime = candidate / "runtime.yaml"
     if runtime.exists():
         if runtime.read_bytes() != target_runtime.read_bytes():
             raise RuntimeError(
-                "retained Evidence runtime differs from the compiled target"
+                "retained Evidence runtime differs from the packaged candidate"
             )
     else:
         shutil.copyfile(target_runtime, runtime)
         runtime.chmod(0o400)
-    run("evidencectl", "doctor", "--runtime-config", runtime)
+    activation = activate_evidence_authority(
+        deployed / "runtime.yaml",
+        deployed / "candidate" / "compiled-authority.yaml",
+    )
+    save(evidence / "authority-activation.json", {"outcome": activation})
+    checked = run(
+        "evidence", "check", "--runtime-config", deployed / "runtime.yaml",
+        "--format", "json",
+    )
+    save(evidence / "runtime-check-report.json", checked)
+    run("evidencectl", "doctor", "--runtime-config", deployed / "runtime.yaml")
+    verify_evidence_authority(runtime, evidence / "project", evidence / "target")
     prepare_evidence_client()
     package_report = json.loads(
         (evidence / "package-report.json").read_text(encoding="utf-8")
     )
     save(
         evidence / "initialized.json",
-        {"packageRevision": package_report.get("revision")},
+        {"packageDigest": package_report["packageDigest"]},
     )
     prepared = json.loads(
         (ROOT / "prepared.json").read_text(encoding="utf-8")
     )
+    evaluated_cases = json.loads(fixtures).get("evaluatedCases")
+    if not isinstance(evaluated_cases, int) or evaluated_cases < 1:
+        raise RuntimeError("Evidence fixture report has no evaluated cases")
+    prepared["fixtures"] = evaluated_cases
     prepared["evidencePackage"] = "transit-version-1"
     save(ROOT / "prepared.json", prepared)
     print("Evidence production package compiled against Transit key version 1.")

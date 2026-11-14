@@ -10,7 +10,7 @@ export function id(name) {
 }
 
 export const projectId = id('project');
-export const triggerIds = Object.fromEntries(['registration', 'committed'].map(name => [name, id(`${name}:trigger`)]));
+export const triggerIds = Object.fromEntries(['registration', 'correction', 'committed'].map(name => [name, id(`${name}:trigger`)]));
 
 const checked = `
 fn(state => {
@@ -26,6 +26,7 @@ fn(state => {
 export function projectDocument(bindings, credentials = {}, enabled = false) {
   const literal = value => JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   const profile = literal(bindings.accessProfile);
+  const correctionProfile = literal(bindings.correctionAccessProfile);
   const evidenceRequest = bindings.evidenceRequest ?? {
     requirement: bindings.requirement,
     selectors: {'local-identifier': {valueFrom: 'data.values.local-identifier'}},
@@ -43,6 +44,32 @@ createRecord(state => ({
 }));
 ${checked}
 fn(state => ({data: {status: 'registered', recordId: state.data.result.value.data.recordIdentifier, traceId: state.data.result.traceId}}));`;
+  const correction = `${validateSubmission}
+fn(state => {
+  const {recordId, name, reason, supportingReference} = state.data;
+  if (typeof recordId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(recordId)) {
+    throw new Error('A valid Farm recordId is required');
+  }
+  return {...state, data: {...state.data, correctionInputs: {record: recordId, name, reason, supportingReference}}};
+});
+startProposal(state => ({
+  actionIdentifier: ${literal(bindings.correctionAction)}, accessProfile: ${correctionProfile},
+  inputs: state.data.correctionInputs,
+  idempotencyKey: 'correction:' + state.data.submissionId, as: 'result'
+}));
+${checked}
+submitProposal(state => ({
+  proposalIdentifier: state.data.result.value.id, accessProfile: ${correctionProfile},
+  expectedInputs: state.data.correctionInputs,
+  idempotencyKey: 'correction-submit:' + state.data.submissionId, as: 'result'
+}));
+fn(state => {
+  const result = state.data.result;
+  if (result.branch !== 'succeeded' && result.branch !== 'already_submitted') {
+    throw new Error('Registry submission did not complete: ' + result.branch);
+  }
+  return {data: {status: 'submitted', proposalId: result.value.id}};
+});`;
   const evidence = `
 fn(state => {
   const event = state.data.event;
@@ -51,7 +78,7 @@ fn(state => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   if (!event || typeof event.source !== 'string' || !event.source.startsWith('urn:registrystack:registry:') || event.source.length > 512 ||
       typeof event.id !== 'string' || !uuid.test(event.id) ||
-      !committed || typeof committed.recordId !== 'string' || !uuid.test(committed.recordId) ||
+      !committed || committed.recordType !== 'farm' || typeof committed.recordId !== 'string' || !uuid.test(committed.recordId) ||
       !Number.isSafeInteger(committed.revision) || committed.revision < 1 ||
       !Number.isSafeInteger(delivery?.generation) || delivery.generation < 1 ||
       typeof committed.values?.['local-identifier'] !== 'string' || !committed.values['local-identifier']) {
@@ -105,9 +132,10 @@ fn(state => ({data: {status: state.data.status, revision: state.data.revision}, 
   }
   return {
     id: projectId, name: 'registry-agriculture-pilot',
-    description: 'Synthetic governed registration and signed registration evidence.',
+    description: 'Synthetic governed registration, reviewed correction, and signed registration evidence.',
     workflows: [
       workflow('registration', [['register', '@openfn/language-registry-breg@local', registration, 'breg']]),
+      workflow('correction', [['submit-correction', '@openfn/language-registry-breg@local', correction, 'breg']]),
       workflow('committed', [
         ['verify-registration', '@openfn/language-registry-evidence@local', evidence, 'evidence'],
         ['record-update', '@openfn/language-http@local', destination, 'destination'],

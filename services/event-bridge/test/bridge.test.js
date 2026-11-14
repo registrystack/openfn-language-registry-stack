@@ -20,6 +20,8 @@ const eventId = '22222222-2222-4222-8222-222222222222';
 const hookEnvelope = { id: eventId, type: 'farm-created-v1', source, time: '2020-01-01T00:00:00Z',
   subject: { recordReference: `hmac-sha256:${'d'.repeat(64)}`, recordRevision: 1 }, dataschema: schema,
   data, causation: { root: eventId, hop: 0 } };
+const currentHookEnvelope = { ...hookEnvelope, data: { ...data, recordType: data.entity } };
+delete currentHookEnvelope.data.entity;
 
 function canonicalFixture(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -118,6 +120,22 @@ test('accepts the canonical 0.38 HookEnvelope and preserves the normalized OpenF
   });
   assert.equal(calls[0].data.subject, undefined);
   assert.equal(calls[0].data.causation, undefined);
+});
+
+test('accepts the canonical 0.45 recordType projection and refuses ambiguous or foreign record types', async t => {
+  const { url, calls } = await fixture(t, undefined, { eventBodyFormat: 'hook-envelope-v1' });
+  const accepted = await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...envelopeDelivery({}, currentHookEnvelope) });
+  assert.equal(accepted.status, 202);
+  assert.equal(await accepted.text(), '{"answer":"none"}');
+  assert.deepEqual(calls[0].data.data, currentHookEnvelope.data);
+  for (const value of [
+    { ...currentHookEnvelope, data: { ...currentHookEnvelope.data, entity: 'farm' } },
+    { ...currentHookEnvelope, data: { ...currentHookEnvelope.data, recordType: 'person' } },
+  ]) {
+    const response = await fetch(`${url}${EVENT_PATH}`, { method: 'POST', ...envelopeDelivery({}, value) });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(calls.length, 1);
 });
 
 test('HookEnvelope identity is bound exactly to verified CloudEvent headers', async t => {

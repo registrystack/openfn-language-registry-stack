@@ -1,113 +1,99 @@
-# The Transit public key is supplied to `evidencectl target new`; no local
-# signing key is generated or retained. The TLS gateway and its private CA are
-# operator bindings, while the governed endpoints stay fixed and reviewable.
-formatVersion: 1
-governance:
-  version: 1
-  assuranceProfile: production
-  service:
-    providerId: https://127.0.0.1:8445
-    publicOrigin: https://127.0.0.1:8445
-    trustDomain: urn:example:trust:agriculture-pilot
-  issuer:
-    id: urn:example:issuer:agriculture-holding-evidence
-  publication:
-    serviceId: urn:example:service:agriculture-holding-evidence
-    title: Synthetic agricultural holding evidence
-    description: Minimum-disclosure synthetic holding registration evidence
-    endpointUrl: https://127.0.0.1:8445
-    jurisdictions: [urn:example:jurisdiction:synthetic]
-  authentication:
-    oidc:
-      issuer: https://127.0.0.1:8443
-      audience: urn:example:audience:agriculture-pilot
-      tokenTypes: [at+jwt]
-      algorithms: [RS256]
-      jwksSource:
-        kind: uri
-        uri: https://127.0.0.1:8443/oauth2/jwks
-      tlsTrustProfile: pilot-ca
-      principalClaim: sub
-      requesterTagsClaim: evidence_tags
-      evidenceAudienceClaim: evidence_audience
-      maximumTokenLifetimeSeconds: 300
-      revokedKeyIds: []
-  audit:
-    hashKeyRef: secret:file/audit-hmac-key
-    hashKeyVersion: 1
-  subjectBinding:
-    secretRef: secret:file/subject-binding-hmac-key
-    keyVersion: 1
-  rateLimits:
-    requestsPerPrincipalPerMinute: 60
-    burstPerPrincipal: 10
-    failedSelectorAttemptsPerPrincipalAuthorityPerMinute: 10
-  signing:
-    format: flattened-jws-json
-    algorithm: ES256
-    publishedPublicJwkFiles: []
+# Legacy pre-v0.45 target location, retained but not used by the active project.
+# The retained Transit public key is copied to public-keys before this target is
+# checked or packaged. No private signing key is generated or retained here.
+apiVersion: id.registrystack.org/formats/evidence/target/v1alpha1
+kind: EvidenceTarget
+id: production
+project: agriculture-holding-evidence
+package:
+  root: /config/evidence/package
+authority: authority.yaml
+service:
+  providerId: https://127.0.0.1:8445
+  issuer: urn:example:issuer:agriculture-holding-evidence
+  publicOrigin: https://127.0.0.1:8445
+  trustDomain: urn:example:trust:agriculture-pilot
+listener:
+  bind: 127.0.0.1:8080
+  tlsTermination: operator-controlled-upstream
+  trustProxyIdentityHeaders: false
+  maximumRequestBytes: 65536
+  maximumConcurrentRequests: 64
+  requestTimeoutMilliseconds: 10000
+  shutdownGraceMilliseconds: 30000
+authentication:
+  oidc:
+    issuer: https://127.0.0.1:8443
+    audience: urn:example:audience:agriculture-pilot
+    tokenTypes:
+    - at+jwt
+    algorithms:
+    - RS256
+    jwksSource:
+      type: uri
+      uri: https://127.0.0.1:8443/oauth2/jwks
+    tlsTrustProfile: pilot-ca
+    principalClaim: sub
+    requesterTagsClaim: evidence_tags
+    evidenceAudienceClaim: evidence_audience
+    requiredScopes:
+    - evidence:request
+    maximumTokenLifetimeSeconds: 300
     revokedKeyIds: []
-    jwksPath: /.well-known/evidence/jwks.json
-    maximumAssertionValiditySeconds: 300
-    verifierClockSkewSeconds: 30
-  responseFormats: [signed-jws]
-  sourceConnections:
-    registry:
-      baseUrl: https://127.0.0.1:8444
-      tlsTrustProfile: pilot-ca
-      authentication:
-        kind: oauth2-client-credentials
-        tokenEndpoint: https://127.0.0.1:8443/oauth2/token
-        clientIdRef: secret:file/registry-client-id
-        clientAssertionKeyRef: secret:file/registry-client-key
-        clientAssertionAudience: https://127.0.0.1:8443
-        resource: urn:example:audience:agriculture-pilot
-        scope: pilot:evidence-source
-        maximumCacheSeconds: 60
-      concurrencyLimit: 4
-      admissionTimeoutMilliseconds: 5000
-      tokenTimeoutMilliseconds: 5000
-  authorityProfiles:
-    holding-verifier:
-      kind: explicit-request
-      requesterTags: [holding-verifier]
-      grants:
-        - requirement: urn:example:requirement:holding-registered:v1
-          purpose: holding-verification
-          audienceFrom: authenticated-requester
-          responseFormats: [signed-jws]
-          subjects:
-            - role: subject
-              selectorProfile: breg-8-registry-4-farm-19-by-local-identifier
-              valueOrigin: request
-runtime:
-  apiVersion: registry.registrystack.org/evidence-runtime/v1alpha1
-  kind: EvidenceRuntimeConfig
-  package:
-    root: /config/evidence/candidate
-  listener:
-    bind: 127.0.0.1:8080
-    tlsTermination: operator-controlled-upstream
-    trustProxyIdentityHeaders: false
-    maximumRequestBytes: 65536
-    maximumConcurrentRequests: 64
-    requestTimeoutMilliseconds: 10000
-    shutdownGraceMilliseconds: 30000
-  secretProviders:
-    file:
-      root: /config/evidence/secrets
-  signer:
-    kind: transit
-    unixSocketPath: /run/registry-evidence/transit-proxy.sock
-    mount: transit
-    keyName: evidence-signing
-    keyVersion: 1
-    timeoutMilliseconds: 2000
-  audit:
-    path: /var/lib/registry-evidence/evidence.jsonl
-  outboundTls:
-    systemRoots: true
-    trustProfiles:
-      pilot-ca:
-        caBundleFile: /config/evidence/tls/pilot-ca.pem
-publicKeys: {}
+connections:
+  registry:
+    allowedPrivateCidrs:
+    - 10.254.45.0/24
+    endpoints:
+      registry:
+        origin: https://issuer:8444
+        authentication:
+          type: oauth2-private-key-jwt
+          tokenEndpoint: https://issuer:8443/oauth2/token
+          clientIdRef: secret:file/registry-client-id
+          clientAssertionKeyRef: secret:file/registry-client-key
+          clientAssertionAudience: https://127.0.0.1:8443
+          resource: urn:example:audience:agriculture-pilot
+          scope: pilot:evidence-source
+          maximumCacheSeconds: 60
+        tlsTrustProfile: pilot-ca
+        attemptTimeoutMilliseconds: 5000
+        maximumResponseBytes: 65536
+secretProviders:
+  file:
+    root: /config/evidence/secrets
+signer:
+  type: transit
+  unixSocketPath: /run/registry-evidence/transit-proxy.sock
+  mount: transit
+  keyName: evidence-signing
+  keyVersion: 1
+  attemptTimeoutMilliseconds: 2000
+  algorithm: ES256
+  publicJwkFile: public-keys/evidence-signing.jwk.json
+subjectBinding:
+  secretRef: secret:file/subject-binding-hmac-key
+  keyVersion: 1
+audit:
+  path: /var/lib/registry-evidence/evidence.jsonl
+  hashKeyRef: secret:file/audit-hmac-key
+  hashKeyVersion: 1
+rateLimits:
+  requestsPerPrincipalPerMinute: 60
+  burstPerPrincipal: 16
+  failedSelectorAttemptsPerPrincipalAuthorityPerMinute: 10
+assuranceProfile: production
+publication:
+  serviceId: urn:example:service:agriculture-holding-evidence
+  title: Synthetic agricultural holding evidence
+  description: Minimum-disclosure synthetic holding registration evidence
+  endpointUrl: https://127.0.0.1:8445
+  jurisdictions:
+  - urn:example:jurisdiction:synthetic
+responseFormats:
+- signed-jws
+outboundTls:
+  systemRoots: true
+  trustProfiles:
+    pilot-ca:
+      caBundleFile: /config/evidence/tls/pilot-ca.pem

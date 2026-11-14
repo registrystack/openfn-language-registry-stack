@@ -10,7 +10,9 @@ import { projectDocument, projectId, triggerIds, id } from '../lightning/project
 import { metadata as baseMetadata, record as baseRecord, ETAG, ID, TRACE } from '../../packages/registry-breg/test/fixtures.js';
 
 const PROFILE = 'editor';
-const bindings = { accessProfile: PROFILE, createFarmOperation: 'records.farm.create', requirement: 'urn:synthetic:registered', registeredConcept: 'urn:synthetic:registered-concept' };
+const bindings = { accessProfile: PROFILE, createFarmOperation: 'records.farm.create',
+  correctionAction: 'correct-farm-name', correctionAccessProfile: 'openfn-service',
+  requirement: 'urn:synthetic:registered', registeredConcept: 'urn:synthetic:registered-concept' };
 const packagePath = fileURLToPath(new URL('../../packages/registry-breg', import.meta.url));
 let cacheId = 0;
 
@@ -170,4 +172,112 @@ test('registration replay reuses the durable key and a changed payload conflicts
     assertClean(replay);
     assertClean(changed);
   } finally { await stub.close(); }
+});
+
+test('compiled correction starts and submits a native Proposal with stable keys and minimal output', async () => {
+  const workflow = projectDocument({ ...bindings, correctionAction: 'correct-farm-name', correctionAccessProfile: 'openfn-service' })
+    .workflows.find(item => item.name === 'Agriculture correction');
+  assert.ok(workflow);
+  assert.equal(workflow.jobs.length, 1);
+  assert.equal(workflow.triggers[0].enabled, false);
+  assert.equal(workflow.triggers[0].has_auth_method, true);
+  assert.equal(workflow.jobs[0].project_credential_id, null);
+  assert.equal(triggerIds.correction, id('correction:trigger'));
+  const body = workflow.jobs[0].body;
+  assert.match(body, /startProposal\(/);
+  assert.match(body, /submitProposal\(/);
+  assert.match(body, /correction-submit:/);
+  assert.doesNotMatch(body, /applyProposal\(|patchRecord\(|\/v1\/proposals\//);
+  assert.doesNotThrow(() => compileJob(body));
+});
+
+test('correction binds the same exact inputs to start and submit and does not expose them in output', async () => {
+  const proposalId = '00000000-0000-4000-8000-000000000099';
+  const input = {
+    submissionId: 'correction-001', recordId: ID, name: 'Corrected farm',
+    reason: 'Synthetic spelling correction', supportingReference: 'SYNTHETIC-REF',
+  };
+  const requests = [];
+  const revision = `sha256:${'a'.repeat(64)}`;
+  const selected = { record: input.recordId, name: input.name, reason: input.reason,
+    supportingReference: input.supportingReference };
+  const metadataValue = {
+    id: 'agricultural-holdings', version: '1', revision, metadataVersion: '2', recordTypes: [], operations: [],
+    proposals: {
+      method: 'GET', path: '/v1/proposals', accessProfiles: ['openfn-service'],
+      actions: [{ actionId: 'correct-farm-name', accessProfile: 'openfn-service', operations: ['get', 'submit'],
+        readableInputs: ['record', 'name', 'reason', 'supporting-reference'], readableContextFields: [] }],
+      get: { method: 'GET', path: '/v1/proposals/{proposal_id}', accessProfiles: ['openfn-service'] },
+    },
+    actions: [{
+      id: 'correct-farm-name', apiName: 'correctFarmName', revision, display: {},
+      execution: { mode: 'proposal' }, attachments: [], route: '/v1/actions/correct-farm-name/proposals',
+      inputMode: 'fixed', inputs: Object.entries(selected).map(([key]) => ({
+        id: key === 'supportingReference' ? 'supporting-reference' : key, apiName: key,
+        required: true, nullable: false, classification: 'restricted', schema: { type: 'string', minLength: 1, maxLength: 500 },
+        fieldType: { type: 'string', minimumLength: 1, maximumLength: 500 },
+      })), referenceInputs: [], requiredConditionKeys: [], resultEffects: [],
+      access: { selectedProfile: 'openfn-service' },
+      routes: { start: { method: 'POST', path: '/v1/actions/correct-farm-name/proposals',
+        operationId: 'actions.correct-farm-name.start', requiresIdempotencyKey: true,
+        inputSchema: 'action-correct-farm-name-invoke-input', responseSchema: 'action-correct-farm-name-invoke-response' } },
+      bounds: { maximumTargets: 16, maximumFieldMutations: 128, maximumSnapshotBytes: 2097152 },
+    }],
+  };
+  let state = 'draft';
+  const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('vary', 'authorization, accept');
+    res.setHeader('traceparent', `00-${TRACE}-00f067aa0ba902b7-01`);
+    if (req.url.includes('/v1/registry')) return res.end(JSON.stringify(metadataValue));
+    if (req.url.includes('/v1/actions/correct-farm-name/proposals')) {
+      if (!isDeepStrictEqual(JSON.parse(body).input, selected)) {
+        res.statusCode = 409;
+        res.setHeader('content-type', 'application/problem+json');
+        return res.end(JSON.stringify({ type: 'about:blank', status: 409, code: 'proposal.input_mismatch', traceId: TRACE }));
+      }
+      res.statusCode = 201;
+    }
+    if (req.url.includes('/submit?')) state = 'submitted';
+    const responseState = req.url.includes('/v1/actions/correct-farm-name/proposals') ? 'draft' : state;
+    const proposal = { id: proposalId, actionId: 'correct-farm-name', actionRevision: revision,
+      submissionVersion: 1, revision: responseState === 'draft' ? 1 : 2, state: responseState, input: selected,
+      ...(responseState === 'draft' ? {} : { effectDigest: revision }),
+      links: { self: { method: 'GET', path: `/v1/proposals/${proposalId}`, accessProfile: 'openfn-service', operation: 'get' },
+        ...(responseState === 'draft' ? { submit: { method: 'POST', path: `/v1/proposals/${proposalId}/submit`,
+          accessProfile: 'openfn-service', operation: 'submit', ifMatch: '"draft-condition"' } } : {}) },
+    };
+    return res.end(JSON.stringify(proposal));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}/tenant`;
+    const correctionBindings = { ...bindings, correctionAction: 'correct-farm-name', correctionAccessProfile: 'openfn-service' };
+    const workflow = projectDocument(correctionBindings).workflows.find(item => item.name === 'Agriculture correction');
+    const code = compileJob(workflow.jobs[0].body);
+    const execute = data => run({ workflow: { steps: [{ id: 'pilot', expression: code }], start: 'pilot' }, options: { start: 'pilot' } },
+      { configuration: { breg: { baseUrl, authorization: { static: 'synthetic-pilot-token' } } }, data },
+      { linker: { modules: { '@openfn/language-registry-breg': { path: packagePath }, '@openfn/language-common': { path: fileURLToPath(new URL('../../node_modules/@openfn/language-common', import.meta.url)) } }, cacheKey: `pilot-correction-${process.pid}-${cacheId++}` } });
+    const result = await execute(input);
+    assert.equal(result.errors, undefined, JSON.stringify(result));
+    assert.deepEqual(result.data, { status: 'submitted', proposalId });
+    assertClean(result);
+    assert.ok(!JSON.stringify(result).includes(input.reason));
+    assert.deepEqual(requests.filter(request => request.method === 'POST').map(request => request.headers['idempotency-key']),
+      ['correction:correction-001', 'correction-submit:correction-001']);
+    assert.equal(requests.find(request => request.url.includes('/submit?')).headers['if-match'], '"draft-condition"');
+    const replay = await execute(input);
+    assert.equal(replay.errors, undefined, JSON.stringify(replay));
+    assert.deepEqual(replay.data, result.data);
+    assert.equal(requests.filter(request => request.url.includes('/submit?')).length, 1);
+    const changed = await execute({ ...input, name: 'A different farm' });
+    assert.match(changed.errors.pilot.message, /Registry operation did not complete: conflict/);
+    assert.equal(requests.filter(request => request.url.includes('/submit?')).length, 1);
+    assertClean(replay);
+    assertClean(changed);
+  } finally { await new Promise(resolve => server.close(resolve)); }
 });

@@ -20,7 +20,8 @@ async function fixture(t) {
   await privateFile(join(files, 'breg-credential.json'), JSON.stringify({breg: {synthetic: 'private-breg'}}));
   await privateFile(join(files, 'evidence-credential.json'), JSON.stringify({evidence: {profilePath: '/synthetic/profile.json'}}));
   await privateFile(join(root, 'workflow-bindings.json'), JSON.stringify({
-    breg: {accessProfile: 'synthetic', farmCreateOperation: 'records.farm.create'},
+    breg: {accessProfile: 'synthetic', farmCreateOperation: 'records.farm.create',
+      correctionAction: 'correct-farm-name', correctionAccessProfile: 'synthetic'},
     evidence: {requirement: 'holding-registered', registeredConcept: 'registered'},
   }));
   return {root, files, secrets};
@@ -197,8 +198,8 @@ test('enable proves anonymous and cross-key rejection before enabling any workfl
   await run('enable', fixture.root, fixture);
   assert.equal(fixture.enabled(), true);
   assert.deepEqual(fixture.probes.filter(probe => !probe.key).map(probe => probe.trigger).sort(), Object.values(triggerIds).sort());
-  assert.equal(fixture.probes.filter(probe => probe.key && !probe.isOwn).length, 2);
-  assert.equal(fixture.probes.filter(probe => probe.isOwn).length, 2);
+  assert.equal(fixture.probes.filter(probe => probe.key && !probe.isOwn).length, 3);
+  assert.equal(fixture.probes.filter(probe => probe.isOwn).length, 3);
 });
 
 for (const [name, trigger] of Object.entries(triggerIds)) {

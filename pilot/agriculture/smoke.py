@@ -29,7 +29,7 @@ def command(*args,cwd=None):
 
 def token(client):
     from issuer import token as issue_token
-    return issue_token(Path('/workspace/pilot/agriculture/.runtime-0.38'), client)
+    return issue_token(Path('/workspace/pilot/agriculture/.runtime-0.45'), client)
 
 
 def request(method,path,bearer,body=None,headers=None):
@@ -68,22 +68,27 @@ def main():
     status,_,found=request('POST','/v1/records/farms:lookup?accessProfile=evidence-source',source,{'selector':'by-local-identifier','values':{'localIdentifier':identifier}})
     assert status==200
     assert found['data']['domainData']=={'localIdentifier':identifier}
-    # Exercise the documented reviewer commands on this separate synthetic record.
+    # Exercise the documented reviewer commands on a native BReg Proposal.
     status,_,before=request('GET',f'/v1/records/farms/{record}?accessProfile=openfn-service',service)
     before_name=before['data']['domainData']['name']
     correction_name='SYNTHETIC-CORRECTED-'+uuid.uuid4().hex[:12]
-    status,_,draft=request('POST','/v1/records/name-corrections?accessProfile=openfn-service',service,{'data':{'record':record,'name':correction_name,'reason':'Synthetic reviewer command proof','supportingReference':'SYNTHETIC-SMOKE-SUPPORT'}},{'Idempotency-Key':'smoke-correction-'+uuid.uuid4().hex})
+    proposal_key='smoke-correction-'+uuid.uuid4().hex
+    status,_,draft=request('POST','/v1/actions/correct-farm-name/proposals?accessProfile=openfn-service',service,
+        {'input':{'record':record,'name':correction_name,'reason':'Synthetic reviewer command proof',
+            'supportingReference':'SYNTHETIC-SMOKE-SUPPORT'}},{'Idempotency-Key':proposal_key})
     assert status==201,(status,draft.get('code'))
-    correction=draft['data']['recordIdentifier']
-    status,_,draft=request('GET',f'/v1/records/name-corrections/{correction}?accessProfile=openfn-service',service)
-    submit=next(a for a in draft['data']['request']['actions'] if a['operation']=='submit_request')
-    status,_,submitted=request('POST',f'/v1/records/name-corrections/{correction}/actions/submit?accessProfile=openfn-service',service,{}, {'If-Match':submit['ifMatch'],'Idempotency-Key':'smoke-submit-'+correction})
+    correction=draft['id']
+    submit=draft.get('links',{}).get('submit',{})
+    assert submit.get('path')==f'/v1/proposals/{correction}/submit'
+    assert submit.get('accessProfile')=='openfn-service' and submit.get('operation')=='submit'
+    status,_,submitted=request('POST',submit['path']+'?accessProfile=openfn-service',service,{},
+        {'If-Match':submit['ifMatch'],'Idempotency-Key':'smoke-submit-'+correction})
     assert status==200,(status,submitted.get('code'))
     command('python3','/opt/pilot/agriculture/review.py','inspect',correction)
     reviewed=json.loads((ROOT/'review'/f'{correction}.json').read_text())
     task=reviewed['casework']['task']
     req=urllib.request.Request(f'http://127.0.0.1:8092/v1/review-tasks/{task["taskId"]}/decisions',
-        method='POST',data=json.dumps({'decision':{'type':'approve'}}).encode(),headers={
+        method='POST',data=json.dumps({'decision':{'type':'approve','outcome':'approved'}}).encode(),headers={
             'Authorization':'Bearer '+service,'Content-Type':'application/json',
             'Registry-Casework-Profile':'reviewer','Registry-Source-Profile':'openfn-service',
             'If-Match':f'"{task["revision"]}"','Idempotency-Key':'smoke-denied-approve-'+correction})

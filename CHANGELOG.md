@@ -8,6 +8,10 @@
   Its existing `0.0.0.0` default remains unchanged.
 - `@openfn/language-registry-casework` wraps the native Casework client for
   requester review requests and results, source inboxes and task grants.
+- The BREG adaptor selects native Actions and Proposal Get authority for
+  `startProposal`, `getProposal`, and replay-safe `submitProposal` operations.
+- The generated pilot restores a correction workflow using native Proposals,
+  Casework review, and a separate manual Apply step.
 
 ### Changed
 
@@ -27,8 +31,10 @@
   output forms are mappings such as `{ type: "boolean" }`, and the progressive
   request names its requirement as `handle`.
 - The event bridge's explicit `hook-envelope-v1` mode validates canonical
-  0.38 events and returns the native notification acknowledgement after
-  durable OpenFn acceptance. The legacy body mode remains available.
+  0.45 events with `recordType` and returns the native notification acknowledgement
+  after durable OpenFn acceptance. Legacy `entity` projections remain accepted.
+- The container pilot pins Registry Stack 0.45.0 runtimes and tools in a fresh
+  isolated project, while leaving the previous 0.38 pilot untouched.
 
 ### Removed
 
@@ -38,11 +44,7 @@
   `getCaseworkWorkItem`; the review task operations replace them.
 - Removed the BREG operations `createChangeRequest` and `executeLifecycleAction`,
   and the `jobs/create-and-submit.js` example. The 0.45 client replaces the
-  change-request lifecycle with metadata-declared Actions and Proposals, which
-  this adaptor does not wrap yet.
-- Removed the `correction` workflow from the generated pilot Lightning project,
-  which depended on those BREG operations. The container pilot itself is still
-  pinned to Registry Stack 0.38.0 server images and has not been repinned.
+  change-request lifecycle with metadata-declared Actions and Proposals.
 
 ## 0.1.0 Beta
 

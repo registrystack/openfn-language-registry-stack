@@ -20,7 +20,7 @@ import urllib.request
 import uuid
 
 REPO = Path(__file__).resolve().parent.parent
-RUNTIME = REPO / 'pilot/agriculture/.runtime-0.38'
+RUNTIME = REPO / 'pilot/agriculture/.runtime-0.45'
 COMPOSE = [str(REPO / 'deployment/compose.sh')]
 PROFILE = 'openfn-service'
 SAFE_ID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
@@ -148,7 +148,7 @@ class Pilot:
         return self.breg('/v1/registry')
 
     def select(self, metadata, entity, kind):
-        matches = [value for value in metadata.get('operations', []) if value.get('sourceEntity') == entity
+        matches = [value for value in metadata.get('operations', []) if value.get('sourceRecordType') == entity
             and value.get('operation') == kind and value.get('accessProfile') == PROFILE]
         require(len(matches) == 1, 'Caller-filtered metadata has no unique required operation')
         return matches[0]
@@ -161,9 +161,7 @@ class Pilot:
         return self.breg(operation_path(lookup), 'POST', {'selector': 'by-local-identifier', 'values': {'localIdentifier': self.state['registration']['localIdentifier']}})
 
     def current_request(self):
-        metadata = self.metadata()
-        get = self.select(metadata, 'name-correction', 'get')
-        return self.breg(operation_path(get, self.state['requestId']))
+        return self.breg('/v1/proposals/' + self.state['proposalId'])
 
     def poll_work_order(self, work_order_id, expect_success):
         require(isinstance(work_order_id, str) and bool(SAFE_ID.fullmatch(work_order_id)), 'OpenFn returned an invalid work-order identifier')
@@ -222,37 +220,44 @@ class Pilot:
         script = "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('/data/destination.sqlite',{readOnly:true});const id=process.argv[1];process.stdout.write(JSON.stringify({records:d.prepare('SELECT * FROM records WHERE record_id=?').all(id),effects:d.prepare('SELECT * FROM effects WHERE record_id=?').all(id)}));d.close()"
         return json_output(captured(COMPOSE + ['exec', '-T', 'destination', 'node', '--no-warnings', '-e', script, self.state['recordId']], 'Private destination storage inspection'), 'Destination storage')
 
+    def require_destination_effects(self, count):
+        rows = self.destination_rows()
+        require(len(rows.get('effects', [])) == count,
+            'Destination observed a farm event before Proposal Apply')
+
     def correction(self):
         return {'submissionId': 'smoke-correction-' + self.state['runId'], 'recordId': self.state['recordId'],
             'name': self.state['correctedName'], 'reason': self.state['reason'], 'supportingReference': self.state['supportingReference']}
 
-    def recover_request_id(self, response):
+    def recover_proposal_id(self, response):
         # Synchronous form workflows return minimal state; accept its documented
         # data wrapper, including the webhook's wrapper around the final state.
-        for value in [response.get('data') if isinstance(response, dict) else None,
-                      response.get('data', {}).get('data') if isinstance(response, dict) and isinstance(response.get('data'), dict) else None]:
-            if isinstance(value, dict) and isinstance(value.get('requestId'), str) and SAFE_ID.fullmatch(value['requestId']):
-                return value['requestId']
-        # No list grant is added for diagnostics. An exact replay under the same
-        # principal, profile, payload and durable key returns the original draft.
-        metadata = self.metadata()
-        operation = self.select(metadata, 'name-correction', 'create')
-        correction = self.correction()
-        fields = {'record': correction['recordId'], **{field: correction[field] for field in ['name', 'reason', 'supportingReference']}}
-        value = self.breg(operation_path(operation), 'POST', {'data': fields},
-            {'Idempotency-Key': 'correction:' + correction['submissionId']})
-        identifier = value.get('data', {}).get('recordIdentifier')
-        require(isinstance(identifier, str) and bool(SAFE_ID.fullmatch(identifier)), 'Correction replay did not return its original request identifier')
-        return identifier
+        def identifier(value):
+            for candidate in [value.get('data') if isinstance(value, dict) else None,
+                    value.get('data', {}).get('data') if isinstance(value, dict) and isinstance(value.get('data'), dict) else None]:
+                proposal_id = candidate.get('proposalId') if isinstance(candidate, dict) else None
+                if isinstance(proposal_id, str) and SAFE_ID.fullmatch(proposal_id):
+                    return proposal_id
+            return None
+        proposal_id = identifier(response)
+        if proposal_id:
+            return proposal_id
+        # The OpenFn workflow owns native Start and Submit. Replaying that same
+        # workflow retains both durable keys and returns the original Proposal.
+        proposal_id = identifier(self.webhook('correction', self.correction()))
+        require(proposal_id is not None, 'Correction replay did not return its original proposal identifier')
+        return proposal_id
 
     def inspect_content(self, record):
-        current = record.get('data', {}).get('domainData', {})
+        current = record.get('input', {})
         expected = {'record': self.state['recordId'], 'name': self.state['correctedName'],
             'reason': self.state['reason'], 'supportingReference': self.state['supportingReference']}
-        require(all(current.get(key) == value for key, value in expected.items()), 'Current correction differs from the retained submitted event')
+        require(record.get('id') == self.state['proposalId'] and record.get('actionId') == 'correct-farm-name'
+            and all(current.get(key) == value for key, value in expected.items()),
+            'Current correction differs from the retained submitted event')
 
     def review(self, action):
-        captured(COMPOSE + ['run', '--rm', '--no-deps', 'tools', 'python3', '/opt/pilot/agriculture/review.py', action, self.state['requestId']], 'Explicit reviewer ' + action)
+        captured(COMPOSE + ['run', '--rm', '--no-deps', 'tools', 'python3', '/opt/pilot/agriculture/review.py', action, self.state['proposalId']], 'Explicit reviewer ' + action)
 
     def verify_retained(self):
         farm = self.farm()
@@ -260,7 +265,7 @@ class Pilot:
         require(farm['data']['domainData'].get('name') == self.state['correctedName'], 'Applied correction is not retained')
         current = self.current_request()
         self.inspect_content(current)
-        require(current['data'].get('request', {}).get('bregState') == 'applied', 'Reviewed correction is not applied')
+        require(current.get('state') == 'applied', 'Reviewed correction is not applied')
         self.wait_destination(2)
         rows = self.destination_rows()
         require(len(rows.get('records', [])) == 1 and len(rows.get('effects', [])) == 2, 'Destination did not retain exactly one effect per farm event')
@@ -293,26 +298,35 @@ class Pilot:
         if farm['data']['domainData'].get('name') == self.state['registration']['name']:
             self.wait_destination(1)
         response = self.webhook('correction', self.correction())
-        request_id = self.recover_request_id(response)
-        if 'requestId' in self.state:
-            require(self.state['requestId'] == request_id, 'Correction replay changed request identity')
-        self.state['requestId'] = request_id
+        proposal_id = self.recover_proposal_id(response)
+        if 'proposalId' in self.state:
+            require(self.state['proposalId'] == proposal_id, 'Correction replay changed proposal identity')
+        self.state['proposalId'] = proposal_id
         self.save()
         self.webhook('correction', self.correction())
         current = self.current_request()
         self.inspect_content(current)
-        state = current['data'].get('request', {}).get('bregState')
+        require(not current.get('handoffRefusal'), 'Casework refused the submitted correction handoff')
+        state = current.get('state')
+        decision = (current.get('decision') or {}).get('status')
+        if state == 'rejected' or decision == 'rejected':
+            raise SmokeFailure('Correction was rejected and cannot be applied')
+        if decision == 'changes-requested':
+            raise SmokeFailure('Correction has changes-requested and requires a revised submission')
         require(state in ['submitted', 'applied'], 'Correction is not in an expected source state')
-        approved = current['data']['request'].get('review', {}).get('result', {}).get('state') == 'approved'
+        approved = decision == 'approved'
         if state == 'submitted' and not approved:
             require(self.farm()['data']['domainData'].get('name') == self.state['registration']['name'], 'Submission changed the governed farm before approval')
+            self.require_destination_effects(1)
             self.review('inspect')
             self.review('approve')
             require(self.farm()['data']['domainData'].get('name') == self.state['registration']['name'], 'Approval unexpectedly applied the correction')
+            self.require_destination_effects(1)
             self.state['phase'] = 'approved'
             self.save()
         if state == 'submitted':
             require(self.farm()['data']['domainData'].get('name') == self.state['registration']['name'], 'Farm changed before explicit application')
+            self.require_destination_effects(1)
             self.review('inspect')
             self.review('apply')
         self.verify_retained()
@@ -356,7 +370,8 @@ def main():
     else:
         pilot.run()
     print(json.dumps({'status': 'passed', 'checks': ['registration', 'exact-replay', 'conflicting-retry',
-        'governed-submit', 'separate-approval-and-application', 'verified-event-effects', 'retained-replay'],
+        'governed-submit', 'unchanged-until-apply', 'separate-approval-and-application',
+        'exactly-one-downstream-observation-after-apply', 'retained-replay'],
         'restartRecovery': pilot.state.get('restartRecovery', 'not-run')}))
 
 

@@ -313,6 +313,21 @@ test("caller mistakes fail before client construction", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("native invalid-request errors are classified as caller mistakes without exposing values", async () => {
+  const { operations } = fakeOperations({
+    reviewRequest: () => {
+      throw new FakeCaseworkClientError({
+        kind: "invalid-request",
+        code: "request.invalid",
+        message: "secret-input-canary",
+      });
+    },
+  });
+  const result = await operations.getReviewRequest({ requestId: REQUEST_ID })(state());
+  assert.equal(result.data.reviewRequest.branch, "invalid_request");
+  assert.equal(JSON.stringify(result.data).includes("secret-input-canary"), false);
+});
+
 test("typed conflicts expose only bounded diagnostics", async () => {
   const { operations } = fakeOperations({
     cancelReviewRequest: () => {

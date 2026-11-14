@@ -1,0 +1,178 @@
+{
+  "apiVersion": "id.registrystack.org/formats/adapter/pack/v1alpha1",
+  "capabilities": {
+    "components": [
+      "http"
+    ],
+    "eips": [
+      "choice",
+      "setBody",
+      "setHeader",
+      "setProperty",
+      "stop",
+      "to"
+    ],
+    "languages": [
+      "constant",
+      "exchangeProperty",
+      "jsonpath",
+      "rhai"
+    ]
+  },
+  "endpoints": [
+    {
+      "attemptTimeoutMilliseconds": 5000,
+      "authentication": {
+        "type": "oauth2-private-key-jwt"
+      },
+      "component": "http",
+      "hostProtocol": {
+        "config": {
+          "digest": "sha256:de5da14df16cbd9f8fc37a8580330242d50409aa15d28749904bc9c2823b41b2",
+          "path": "protocols/registry-lookup.json"
+        },
+        "id": "registry-lookup-v1"
+      },
+      "id": "registry",
+      "maximumResponseBytes": 65536,
+      "operations": [
+        {
+          "id": "lookup",
+          "safeUpstream": true
+        }
+      ],
+      "requestHeaders": [
+        "accept"
+      ],
+      "testedVersions": [
+        "breg-evidence-lookup-v2"
+      ]
+    }
+  ],
+  "id": "holding-register",
+  "kind": "AdapterPack",
+  "scripts": [
+    {
+      "digest": "sha256:980c9def9c0642ee44d2e0526505c944b10a53a2d6f49cad320911f1d31ae703",
+      "path": "scripts/lookup.rhai"
+    }
+  ],
+  "sourceRoutes": [
+    {
+      "evidence": {
+        "acquisitionPosture": "field-projected",
+        "factsSchema": {
+          "digest": "sha256:4a1bce44fe4581496e0ed4498a0684e833046157c8f0d8814957ee8ccc5c529e",
+          "path": "schemas/facts.json"
+        },
+        "inputsSchema": {
+          "digest": "sha256:2799a298b396c3310e5bfaddfc93814ec383d919e534e3a4b88cd13877e87277",
+          "path": "schemas/inputs.json"
+        }
+      },
+      "id": "lookup",
+      "steps": [
+        {
+          "setProperty": {
+            "name": "bregEvidenceInputs",
+            "value": {
+              "jsonpath": "$"
+            }
+          }
+        },
+        {
+          "setProperty": {
+            "name": "bregSelect",
+            "value": {
+              "rhai": {
+                "entrypoint": "select_fields",
+                "file": "scripts/lookup.rhai"
+              }
+            }
+          }
+        },
+        {
+          "setBody": {
+            "rhai": {
+              "entrypoint": "prepare_request",
+              "file": "scripts/lookup.rhai"
+            }
+          }
+        },
+        {
+          "setHeader": {
+            "name": "Accept",
+            "value": {
+              "constant": "application/json"
+            }
+          }
+        },
+        {
+          "to": {
+            "parameters": {
+              "body": {
+                "jsonpath": "$"
+              },
+              "httpMethod": "POST",
+              "operation": "lookup",
+              "path": "/v1/records/farms:lookup",
+              "query": {
+                "$select": {
+                  "exchangeProperty": "bregSelect"
+                },
+                "accessProfile": {
+                  "constant": "evidence-source"
+                }
+              },
+              "throwExceptionOnFailure": false
+            },
+            "uri": "http:registry"
+          }
+        },
+        {
+          "choice": {
+            "when": [
+              {
+                "rhai": {
+                  "entrypoint": "is_unresolved",
+                  "file": "scripts/lookup.rhai"
+                },
+                "steps": [
+                  {
+                    "stop": {}
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "setBody": {
+            "rhai": {
+              "entrypoint": "project_response",
+              "file": "scripts/lookup.rhai"
+            }
+          }
+        },
+        {
+          "validateSchema": {
+            "digest": "sha256:01ed92a5faaa14a53a4336044536d353e1a30b0e8e7ece20331f40ed42569df6",
+            "path": "schemas/response.json"
+          }
+        },
+        {
+          "setBody": {
+            "rhai": {
+              "entrypoint": "lookup",
+              "file": "scripts/lookup.rhai"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "testedVersions": [
+    "breg-evidence-lookup-v2"
+  ],
+  "version": "sha256:000b55a4f01df4d2f409d6e73fd0ed12bc7644829dd60cc0f1f7574988f23daf"
+}

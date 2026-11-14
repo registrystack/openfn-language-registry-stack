@@ -385,7 +385,7 @@ function failure(error, ClientError, ProviderError, deduplicateBy) {
   if (ProviderError && error instanceof ProviderError) {
     const retryable = error.kind === "transport" || error.tokenKind === "transport";
     const branch =
-      error.kind === "configuration" || error.kind === "invalid_request"
+      error.kind === "configuration" || error.kind === "invalid-request"
         ? "invalid_request"
         : retryable
           ? "retryable_infrastructure"
@@ -406,7 +406,7 @@ function failure(error, ClientError, ProviderError, deduplicateBy) {
   const code = safeProblemCode(error.code) ?? `casework.${error.kind}`;
   let branch = "failed";
   if (code === "cursor.expired") branch = "cursor_expired";
-  else if (error.kind === "configuration" || error.kind === "invalid_request")
+  else if (error.kind === "configuration" || error.kind === "invalid-request")
     branch = "invalid_request";
   else if (error.kind === "transport" || status === 429 || status >= 500)
     branch = "retryable_infrastructure";

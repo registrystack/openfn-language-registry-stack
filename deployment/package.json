@@ -2,7 +2,7 @@
   "name": "registry-openfn-pilot-dependencies",
   "version": "0.1.0",
   "private": true,
-  "description": "Frozen dependency graph for the isolated Registry Stack 0.38.0 pilot.",
+  "description": "Frozen dependency graph for the isolated Registry Stack 0.45.0 pilot.",
   "dependencies": {
     "@openfn/language-common": "3.3.4",
     "@openfn/language-http": "7.3.3",

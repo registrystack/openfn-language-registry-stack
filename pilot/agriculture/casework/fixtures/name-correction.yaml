@@ -1,10 +1,18 @@
-apiVersion: registry.registrystack.org/casework-fixture/v1alpha1
+apiVersion: id.registrystack.org/formats/casework/fixture/v1alpha1
 kind: CaseworkFixture
-name: agriculture-name-correction-offline
-source:
-  id: agricultural-holdings
-  requestEntity: name-correction
-  reviewStage: review
+id: agriculture-name-correction-offline
+review:
+  policy: name-correction
+  display:
+    farmId: 00000000-0000-4000-8000-000000000001
+    currentName: Frist Record
+    changes:
+      - recordId: 00000000-0000-4000-8000-000000000001
+        operation: patch
+        before: {name: Frist Record}
+        after: {name: First Record}
+    reason: Synthetic spelling correction
+    supportingReference: SYNTHETIC-SUPPORT-001
 expect:
   queue: corrections
-  applicationMode: manual
+  outcomes: [approved, changes-requested, rejected]

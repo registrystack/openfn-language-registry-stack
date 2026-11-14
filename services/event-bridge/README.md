@@ -18,7 +18,7 @@ payloads are refused before forwarding.
 
 The default `direct-data-v0` body format accepts the legacy BREG projection as
 the request body. Set `BREG_EVENT_BODY_FORMAT=hook-envelope-v1` for Registry
-Stack 0.38. That mode requires the exact canonical RFC 8785 `HookEnvelope`
+Stack 0.45. That mode requires the exact canonical RFC 8785 `HookEnvelope`
 bytes emitted by BREG. Its closed members are `id`, `type`, `source`, `time`,
 `subject`, `dataschema`, `data`, and `causation`. The five CloudEvent identity
 members must equal their already verified `ce-*` headers. The subject must
@@ -26,9 +26,10 @@ contain BREG's HMAC record reference and the same positive revision as `data`.
 Causation must be a valid root or child chain at or below hop 8. The mode is
 explicit so a malformed envelope cannot be reinterpreted as a legacy body.
 
-In either mode, the validated data accepts exactly the common BREG members
-`entity`, `recordId`, `revision`, `trigger`, `packageRevision`, and `values`.
-Entity, event schema, trigger, and projected field names must match
+The validated data accepts `recordType` in the 0.45 projection and `entity` in
+retained legacy projections, never both. The remaining required members are
+`recordId`, `revision`, `trigger`, `packageRevision`, and `values`.
+Record type, event schema, trigger, and projected field names must match
 configuration. Record/event ids must be canonical lowercase UUIDs, revision a
 positive safe integer, package revision a SHA-256 binding, and projected values
 strings of at most 1024 UTF-8 bytes. Reviewed `request_lifecycle` events also
@@ -43,9 +44,9 @@ Configuration is required unless a default is listed:
 | `BREG_HMAC_KEY_FILE` | File containing exact HMAC key bytes, at least 32 bytes. |
 | `BREG_EXPECTED_SOURCE` | Exact CloudEvent source for the registry instance. |
 | `BREG_EVENT_PATH` | Optional exact signed ingress path, default `/events/breg`; one lowercase name under `/events/`, with letters, digits or hyphens. |
-| `BREG_EVENT_BODY_FORMAT` | Exact body contract. Default `direct-data-v0` preserves legacy projection bodies. Set `hook-envelope-v1` for canonical Registry Stack 0.38 `HookEnvelope` bodies. No other value is accepted. |
+| `BREG_EVENT_BODY_FORMAT` | Exact body contract. Default `direct-data-v0` preserves legacy projection bodies. Set `hook-envelope-v1` for canonical Registry Stack 0.45 `HookEnvelope` bodies. No other value is accepted. |
 | `BREG_BIND_HOST` | Listener address, default `0.0.0.0` for compatibility. Set `127.0.0.1` for a host-local receiver; no other addresses are accepted. |
-| `BREG_EXPECTED_ENTITY` | Exact payload entity, `farm` for this pilot. |
+| `BREG_EXPECTED_ENTITY` | Exact payload record type, `farm` for this pilot. The retained variable name also covers legacy `entity` projections. |
 | `BREG_EXPECTED_EVENTS_FILE` | JSON object mapping each exact type to `{ "schema": "exact-dataschema", "trigger": "created" }`; `patched` and `request_lifecycle` are also supported. Optional per-event `entity` and `valueFields` override defaults; CLI mode requires `effect`. |
 | `BREG_ALLOWED_VALUE_FIELDS_FILE` | JSON array of exact projected string fields, `["local-identifier"]` for this pilot. |
 | `OPENFN_DELIVERY_MODE` | Default `webhook`; use `cli` for durable local execution. |
@@ -80,7 +81,7 @@ existing OpenFn jobs keep the same input contract:
     "idempotencyKey": "sha256:<64 lowercase hex characters>"
   },
   "data": {
-    "entity": "farm",
+    "recordType": "farm",
     "recordId": "11111111-1111-4111-8111-111111111111",
     "revision": 1,
     "trigger": "created",
@@ -98,7 +99,7 @@ malformed/generic success responses, redirects, transport failures, or oversized
 responses produce 502; deadline expiry produces 504. There are no internal
 retries, redirect following, or persistent bridge inbox in webhook mode.
 
-That legacy receipt applies to `direct-data-v0`. Registry Stack 0.38 treats a
+That legacy receipt applies to `direct-data-v0`. Registry Stack 0.45 treats a
 successful URL handler response as a canonical HookMessage. In
 `hook-envelope-v1`, the bridge therefore returns the notification answer
 `202 {"answer":"none"}` after the same durable handoff. This acknowledges the

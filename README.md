@@ -10,12 +10,9 @@ composition. The Relay adaptor is removed: the 0.45 client has no Relay
 namespace.
 
 **Pilot status:** the container pilot under `deployment/` and `pilot/agriculture/`
-still pins Registry Stack 0.38.0 server images, tools and checksums, and has not
-been repinned or run against 0.45. The generated Lightning project no longer
-contains the correction workflow, because it depended on the BREG change-request
-lifecycle operations that the 0.45 client removed. The pilot smoke test and the
-correction sections below describe the 0.38 flow and need a 0.45 pilot
-registry before they apply again.
+targets the Registry Stack 0.45.0 server, tools and client tuple. Its correction
+workflow uses native BREG Proposals with Casework review and a separate Apply
+step. A setup run alone does not establish live acceptance; run the smoke below.
 
 A self-hosted synthetic pilot connecting upstream OpenFn Lightning to Registry
 Stack Base Registry Engine (BREG) and signed Evidence. It demonstrates registration,
@@ -43,7 +40,7 @@ The pilot uses:
 | Workflow | Authoritative result | Response and boundary |
 | --- | --- | --- |
 | Registration | Creates one Farm using a stable submission key. | The authenticated synchronous webhook returns its UUID. An exact retry returns the same record; changed content with the same key conflicts. |
-| Correction | Creates and submits a name-correction request. | Returns its request UUID. A separate reviewer approves in Casework, then explicitly applies through BREG. Submission and approval leave the Farm unchanged. |
+| Correction | Starts and submits a `correct-farm-name` Proposal. | Returns its Proposal UUID. A separate reviewer approves in Casework, then explicitly applies through BREG. Submission and approval leave the Farm unchanged. |
 | Committed Farm event | Verifies HMAC delivery, requests signed registration Evidence, then updates the destination. | Asynchronous. Only the verified `registered: true`, record reference and revision reach the destination. |
 
 BREG owns records, permissions, proposals, revisions, ETags and the transactional
@@ -92,7 +89,7 @@ printing raw service output. Setup is not a statement that the full acceptance
 journey passed; the smoke must finish with `"status": "passed"`.
 
 Open [Lightning](http://localhost:4010). The generated login is in
-`pilot/agriculture/.runtime-0.38/openfn/secrets/operator.json`; open that private file
+`pilot/agriculture/.runtime-0.45/openfn/secrets/operator.json`; open that private file
 locally to read the email and password. Do not paste its contents into tickets,
 job expressions or logs. There is no shared default password. The same private
 folder contains the operator API token, separate intake and committed-event keys,
@@ -100,7 +97,7 @@ credential associations and
 `project.json`, which records the actual project and trigger UUIDs.
 
 The smoke creates a fresh synthetic identity once and stores it in owner-only
-`pilot/agriculture/.runtime-0.38/smoke-state.json`. It exercises registration,
+`pilot/agriculture/.runtime-0.45/smoke-state.json`. It exercises registration,
 unchanged and conflicting retries, correction submission, separate Casework reviewer
 approval/BREG application, event-driven Evidence and destination effects. Repeating
 it reuses its original keys and records. It does not clear data or make a new
@@ -124,23 +121,23 @@ committed-event trigger acknowledges asynchronously.
 Set the correction's `recordId` to the registered Farm UUID. Keep `submissionId`
 stable for the same logical request; use a new one for a deliberately different
 request. A correction retry must match all original fields, including its
-supporting reference. Workflow outputs return the Farm or request UUID and do
+supporting reference. Workflow outputs return the Farm or Proposal UUID and do
 not return the submitted name.
 
 Approval and application use the separate reviewer credential in the tools
 service. OpenFn never receives this private key. Substitute the correction
-request UUID, inspect the displayed synthetic proposal, then decide:
+Proposal UUID, inspect the displayed synthetic proposal, then decide:
 
 ```sh
 ./deployment/compose.sh run --rm --no-deps tools \
-  python3 /opt/pilot/agriculture/review.py inspect REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py inspect PROPOSAL_UUID
 ./deployment/compose.sh run --rm --no-deps tools \
-  python3 /opt/pilot/agriculture/review.py approve REQUEST_UUID
-# The Farm is still unchanged. Inspect the approved request before application.
+  python3 /opt/pilot/agriculture/review.py approve PROPOSAL_UUID
+# The Farm is still unchanged. Inspect the approved Proposal before application.
 ./deployment/compose.sh run --rm --no-deps tools \
-  python3 /opt/pilot/agriculture/review.py inspect REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py inspect PROPOSAL_UUID
 ./deployment/compose.sh run --rm --no-deps tools \
-  python3 /opt/pilot/agriculture/review.py apply REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py apply PROPOSAL_UUID
 ```
 
 The reviewer helper binds the Casework task to its inspected source context and
@@ -168,12 +165,12 @@ records, correction and destination effects. It does not recreate databases or
 ThunderID's shared network namespace.
 
 Always use `deployment/compose.sh` for lower-level commands. It fixes the Compose
-project to `registry-openfn-pilot-038` and preserves the operator UID/GID in ignored
-`deployment/.env-0.38`. If the pilot moves to another operator, transfer ownership
+project to `registry-openfn-pilot-045` and preserves the operator UID/GID in ignored
+`deployment/.env-0.45`. If the pilot moves to another operator, transfer ownership
 of its retained private files explicitly and update that file. Do not solve a
 permission failure by making keys world-readable.
 
-Reset is separate and permanently destroys only the current 0.38 pilot's containers,
+Reset is separate and permanently destroys only the current 0.45 pilot's containers,
 volumes, records, history and generated private keys:
 
 ```sh
@@ -191,8 +188,8 @@ remove a partially activated database to make readiness pass.
 | --- | --- |
 | Timeout or failed registration/correction job | Inspect the failed work order in Lightning, restore the dependency, then retry the original input with its original submission ID. A timeout can follow a committed mutation. Do not generate a fresh key to hide an unknown outcome. |
 | Idempotency or ETag conflict | Confirm whether the payload changed or the baseline is stale. Reuse the original payload for an exact replay. For a deliberate new correction, review current state and create a new submission; do not force a write with a stale ETag. |
-| Already-submitted correction | The workflow rereads the request and verifies its original content before reporting `already_submitted`. A missing action alone is not proof of success. |
-| Rejected correction | Read the review decision. A repeat of the original submission reports the existing request ID; inspect its current BREG state and decision. It does not resubmit it. Submit a revised proposal with a new submission ID after review, or use a currently advertised revise action through the BREG adaptor. The pilot form does not automatically revise or approve. |
+| Already-submitted correction | The workflow rereads the Proposal and verifies its original input before returning its ID. A missing transition link alone is not proof of success. |
+| Rejected correction | Read the review decision. A repeat of the original submission reports the existing Proposal ID; inspect its current BREG state and decision. It does not resubmit it. Submit a new Proposal with a new submission ID after reviewing the current Farm. The pilot form does not automatically revise or approve. |
 | Authentication failure or expired credentials | Private-key JWT obtains fresh short-lived access tokens through ThunderID. Check issuer readiness, host clock, client registration and private-key permissions. Correct the OpenFn credential/profile when keys change. Do not paste a temporary access token into job source or rotate unrelated keys during an exact retry. |
 | Evidence unavailable, denied or unverifiable | Leave the destination unchanged. Check the authorized exact source lookup, selected requirement, requester credentials and reviewed trust/profile configuration. Unavailable is not a signed negative. Retry the original failed committed-event work order only after the cause is resolved. |
 | Failed committed-event workflow after webhook acknowledgement | Use Lightning's failed work order and original input for recovery. BREG's successful HTTP handoff does not imply that the asynchronous workflow succeeded. Destination deduplication makes an exact successful effect replay safe. |
@@ -224,15 +221,15 @@ This deliberately interrupts selected services and then restores them. It checks
 BREG retry/dead-letter replay before OpenFn accepts a delivery, retry of a failed
 destination step after acceptance, and retained queued work across application
 restarts. Each scenario keeps a separate synthetic identity in private
-`.runtime-0.38/recovery-state.json`; it removes no records or volumes. Select
+`.runtime-0.45/recovery-state.json`; it removes no records or volumes. Select
 `before-accept`, `after-accept`, or `pending-restart` instead of `all` for one case.
 
 For value-free BREG delivery status and an explicit eligible replay:
 
 ```sh
-./deployment/compose.sh run --rm --no-deps tools bregctl webhook list \
+./deployment/compose.sh run --rm --no-deps tools bregctl hook list \
   --runtime-config /config/breg/runtime.yaml
-./deployment/compose.sh run --rm --no-deps tools bregctl webhook replay \
+./deployment/compose.sh run --rm --no-deps tools bregctl hook replay \
   --runtime-config /config/breg/runtime.yaml \
   --event-id EVENT_UUID --delivery-id DELIVERY_ID --expected-generation GENERATION
 ```
