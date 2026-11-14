@@ -10,7 +10,8 @@ import { projectDocument } from '../lightning/project.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const bindings = {
-  accessProfile: 'pilot', createFarmOperation: 'create', createCorrectionOperation: 'correct',
+  accessProfile: 'pilot', createFarmOperation: 'create',
+  correctionAction: 'correct-farm-name', correctionAccessProfile: 'pilot',
   requirement: 'farm-registered', registeredConcept: 'urn:example:concept:registered',
 };
 const revision = `sha256:${'a'.repeat(64)}`;
@@ -27,7 +28,7 @@ bindings.evidenceRequest = {
   expectedAssuranceProfile: 'local',
   subjects: [{role: 'farm', selectorProfile: 'farm-id',
     selectorValues: {'local-identifier': {valueFrom: 'data.values.local-identifier'}}}],
-  expectedOutputs: [{concept: bindings.registeredConcept, form: 'boolean'}],
+  expectedOutputs: [{concept: bindings.registeredConcept, form: {type: 'boolean'}}],
   maximumAssertionLifetimeSeconds: 300,
   clockSkewSeconds: 30,
   subjectExpectations: 'acceptFirstUse',
@@ -37,7 +38,7 @@ const envelope = () => ({
     id: '22222222-2222-4222-8222-222222222222', type: 'registry.record.committed',
     time: '2026-01-01T00:00:00Z', dataschema: 'urn:example:committed-event' },
   delivery: { generation: 3, attempt: 2, time: '2026-09-09T00:00:00Z', idempotencyKey: `sha256:${'c'.repeat(64)}` },
-  data: { entity: 'farm', recordId: '11111111-1111-4111-8111-111111111111', revision: 7,
+  data: { recordType: 'farm', recordId: '11111111-1111-4111-8111-111111111111', revision: 7,
     trigger: 'patched', packageRevision: `sha256:${'b'.repeat(64)}`,
     values: { 'local-identifier': 'synthetic-farm-selector' } },
 });
@@ -174,7 +175,7 @@ for (const outcome of ['false', 'unavailable', 'missing-value']) {
 test('missing event metadata, selector, or revision refuses before Evidence I/O', async () => {
   const service = await fixture();
   try {
-    for (const mutate of [input => { delete input.event.id; }, input => { delete input.data.values['local-identifier']; }, input => { input.data.revision = undefined; }, input => { input.delivery.generation = undefined; }]) {
+    for (const mutate of [input => { delete input.event.id; }, input => { delete input.data.values['local-identifier']; }, input => { input.data.revision = undefined; }, input => { input.delivery.generation = undefined; }, input => { input.data.recordType = 'person'; }]) {
       const input = envelope(); mutate(input);
       const result = await executeEvidence(service.configuration, input);
       assert.ok(result.errors?.verify);

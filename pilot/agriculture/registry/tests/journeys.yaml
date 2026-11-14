@@ -1,319 +1,330 @@
-apiVersion: registry.registrystack.org/breg-journeys/v1
+apiVersion: id.registrystack.org/formats/breg/journeys/v1
+kind: BRegJourneys
 journeys:
-  - id: starter-model-policy
-    steps:
-      - id: seed-river
-        entity: farm
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-RIVER
-            name: River Holding
-        expect:
-          outcome: success
-          status: 201
-        capture: river
-      - id: seed-landless
-        entity: farm
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-LANDLESS
-            name: Landless Cooperative Holding
-        expect:
-          outcome: success
-          status: 201
-        capture: landless
-      - id: seed-collective
-        entity: farm
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-COLLECTIVE
-            name: Hill Collective Holding
-        expect:
-          outcome: success
-          status: 201
-        capture: collective
-      - id: seed-ana
-        entity: person
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-ANA
-            name: Ana Example
-        expect:
-          outcome: success
-          status: 201
-        capture: ana
-      - id: seed-bo
-        entity: person
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-BO
-            name: Bo Example
-        expect:
-          outcome: success
-          status: 201
-        capture: bo
-      - id: seed-cooperative
-        entity: organization
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-COOPERATIVE
-            name: Example Agricultural Cooperative
-        expect:
-          outcome: success
-          status: 201
-        capture: cooperative
-      - id: seed-group
-        entity: informal-group
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: SYNTHETIC-GROUP
-            name: Hill Growers Group
-        expect:
-          outcome: success
-          status: 201
-        capture: group
-      - id: seed-ana-role
-        entity: person-agricultural-holder-role
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            holderFarm:
-              recordRef: river
-            holderPerson:
-              recordRef: ana
-            startDate: '2026-01-01'
-        expect:
-          outcome: success
-          status: 201
-        capture: ana-role
-      - id: seed-bo-role
-        entity: person-agricultural-holder-role
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            holderFarm:
-              recordRef: river
-            holderPerson:
-              recordRef: bo
-            startDate: '2026-01-01'
-        expect:
-          outcome: success
-          status: 201
-        capture: bo-role
-      - id: seed-cooperative-role
-        entity: organization-agricultural-holder-role
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            holderFarm:
-              recordRef: landless
-            holderOrganization:
-              recordRef: cooperative
-            startDate: '2026-01-01'
-        expect:
-          outcome: success
-          status: 201
-        capture: cooperative-role
-      - id: seed-group-role
-        entity: group-agricultural-holder-role
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            holderFarm:
-              recordRef: collective
-            holderGroup:
-              recordRef: group
-            startDate: '2026-01-01'
-        expect:
-          outcome: success
-          status: 201
-        capture: group-role
-      - id: first-record
-        entity: farm
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            localIdentifier: JOURNEY-FIRST-001
-            name: Frist Record
-        expect:
-          outcome: success
-          status: 201
-        capture: first-record
-      - id: draft-correction
-        entity: name-correction
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: create
-          data:
-            record:
-              recordRef: first-record
-            name: First Record
-            reason: Synthetic spelling correction
-            supportingReference: SYNTHETIC-SUPPORT-001
-        expect:
-          outcome: success
-          status: 201
-        capture: draft
-      - id: before-submit
-        entity: name-correction
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: get
-          recordRef: draft
-        expect:
-          outcome: success
-          status: 200
-        capture: before-submit
-      - id: submit-correction
-        entity: name-correction
-        accessProfile: editor
-        claims:
-          actorKind: human
-          principal: synthetic-editor
-          scopes:
-            - starter:editor
-          purpose: starter-learning
-        request:
-          operation: submit_request
-          etagRef: before-submit
-          recordRef: before-submit
-        expect:
-          outcome: success
-          status: 200
-      - id: review
-        entity: name-correction
-        accessProfile: reviewer
-        claims:
-          actorKind: human
-          principal: synthetic-reviewer
-          scopes:
-            - starter:reviewer
-          purpose: starter-learning
-        request:
-          operation: get
-          recordRef: draft
-        expect:
-          outcome: success
-          status: 200
-        capture: review
-      - id: approval-does-not-apply
-        entity: farm
-        accessProfile: reader
-        claims:
-          principal: synthetic-reader
-          scopes:
-            - starter:reader
-          purpose: starter-learning
-        request:
-          operation: get
-          recordRef: first-record
-        expect:
-          outcome: success
-          status: 200
-          fields:
-            name: Frist Record
-            localIdentifier: JOURNEY-FIRST-001
-        capture: approval-does-not-apply
+- id: starter-model-policy
+  steps:
+  - id: seed-river
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-RIVER
+        name: River Holding
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: river
+    recordType: farm
+  - id: seed-landless
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-LANDLESS
+        name: Landless Cooperative Holding
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: landless
+    recordType: farm
+  - id: seed-collective
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-COLLECTIVE
+        name: Hill Collective Holding
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: collective
+    recordType: farm
+  - id: seed-ana
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-ANA
+        name: Ana Example
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: ana
+    recordType: person
+  - id: seed-bo
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-BO
+        name: Bo Example
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: bo
+    recordType: person
+  - id: seed-cooperative
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-COOPERATIVE
+        name: Example Agricultural Cooperative
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: cooperative
+    recordType: organization
+  - id: seed-group
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: SYNTHETIC-GROUP
+        name: Hill Growers Group
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: group
+    recordType: informal-group
+  - id: seed-ana-role
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        holderFarm:
+          recordCapture: river
+        holderPerson:
+          recordCapture: ana
+        startDate: '2026-01-01'
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: ana-role
+    recordType: person-agricultural-holder-role
+  - id: seed-bo-role
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        holderFarm:
+          recordCapture: river
+        holderPerson:
+          recordCapture: bo
+        startDate: '2026-01-01'
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: bo-role
+    recordType: person-agricultural-holder-role
+  - id: seed-cooperative-role
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        holderFarm:
+          recordCapture: landless
+        holderOrganization:
+          recordCapture: cooperative
+        startDate: '2026-01-01'
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: cooperative-role
+    recordType: organization-agricultural-holder-role
+  - id: seed-group-role
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        holderFarm:
+          recordCapture: collective
+        holderGroup:
+          recordCapture: group
+        startDate: '2026-01-01'
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: group-role
+    recordType: group-agricultural-holder-role
+  - id: first-record
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      data:
+        localIdentifier: JOURNEY-FIRST-001
+        name: Frist Record
+      type: create
+    expect:
+      outcome: success
+      status: 201
+    capture: first-record
+    recordType: farm
+  - id: draft-correction
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      type: proposal
+      transition: start
+      idempotencyKey: journey-correction-start
+      input:
+        record:
+          recordCapture: first-record
+        name: First Record
+        reason: Synthetic spelling correction
+        supportingReference: SYNTHETIC-SUPPORT-001
+    expect:
+      outcome: success
+      status: 201
+      fields:
+        state: draft
+    capture: draft
+    action: correct-farm-name
+  - id: before-submit
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      type: proposal
+      transition: get
+      proposalCapture: draft
+    expect:
+      outcome: success
+      status: 200
+    capture: before-submit
+    action: correct-farm-name
+  - id: submit-correction
+    accessProfile: editor
+    claims:
+      principal: synthetic-editor
+      scopes:
+      - starter:editor
+      purpose: starter-learning
+      actorKind: human
+    request:
+      type: proposal
+      transition: submit
+      proposalCapture: before-submit
+      idempotencyKey: journey-correction-submit
+    expect:
+      outcome: success
+      status: 200
+      fields:
+        state: submitted
+    action: correct-farm-name
+    capture: submitted
+  - id: review
+    accessProfile: reviewer
+    claims:
+      principal: synthetic-reviewer
+      scopes:
+      - starter:reviewer
+      purpose: starter-learning
+      actorKind: human
+    request:
+      type: proposal
+      transition: get
+      proposalCapture: submitted
+    expect:
+      outcome: success
+      status: 200
+    capture: review
+    action: correct-farm-name
+  - id: approval-does-not-apply
+    accessProfile: reader
+    claims:
+      principal: synthetic-reader
+      scopes:
+      - starter:reader
+      purpose: starter-learning
+    request:
+      recordCapture: first-record
+      type: get
+    expect:
+      outcome: success
+      status: 200
+      fields:
+        name: Frist Record
+        localIdentifier: JOURNEY-FIRST-001
+    capture: approval-does-not-apply
+    recordType: farm

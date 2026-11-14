@@ -8,22 +8,25 @@ review these boundaries before production deployment.
 
 ## Actors and operations
 
-| Actor | Ordinary records | Correction requests |
+| Actor | Ordinary records | Correction Proposals |
 | --- | --- | --- |
 | Reader | Get and list Farm records only; no person, organization, informal-group or holder-role access | No access |
-| Editor | Create, get, list and inspect history; PATCH only where the entity is not controlled | Create and edit own drafts; submit, revise or cancel own requests |
-| Maintainer | Get, list and inspect history | Read proposed fields and external review status; apply an exactly approved proposal |
+| Editor | Create, get, list and inspect history; PATCH only where the record type permits it | Start and edit own drafts; submit, revise or cancel own Proposals |
+| OpenFn service | Create and exactly look up Farm records | Start and submit its own Proposals; no review or Apply authority |
+| Reviewer | Get, list and inspect history | Read submitted Proposals and their review context; decide the Casework review |
+| Correction applier | No direct Farm mutation authority | Apply an approved Proposal after a separate review decision |
 
 Every operation absent from the authored permissions is denied, including deletion.
-The full PATCH operation on Farm is controlled. The correction changes
-only `name`; it cannot change identity or holder/link endpoints. A maintainer is
-the authorized source applier. Registry Casework independently owns reviewer
-eligibility and separation from the submitter. External approval leaves the target unchanged.
+Direct PATCH on Farm is blocked by its proposal-required mutation policy. The
+`correct-farm-name` Action changes only `name`; it cannot change identity or
+holder/link endpoints. The separate correction-applier profile holds native
+Apply authority. Registry Casework independently owns reviewer eligibility and
+separation from the submitter. External approval leaves the target unchanged.
 Application uses the native frozen effect and expected target revision. A stale
-target requires the native revision/rebase and review path.
+target requires a new proposal and review against the current Farm revision.
 
-Reasons and supporting references live in correction records, restricted to
-maintainers. They are bounded synthetic text, not uploaded evidence or proof of
+Reasons and supporting references live in Proposals, readable only through the
+declared Proposal profiles. They are bounded synthetic text, not uploaded evidence or proof of
 legal authority. Historical access includes old values of readable fields.
 
 ## References, identity and dates

@@ -26,6 +26,7 @@ fn(state => {
 export function projectDocument(bindings, credentials = {}, enabled = false) {
   const literal = value => JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   const profile = literal(bindings.accessProfile);
+  const correctionProfile = literal(bindings.correctionAccessProfile);
   const evidenceRequest = bindings.evidenceRequest ?? {
     requirement: bindings.requirement,
     selectors: {'local-identifier': {valueFrom: 'data.values.local-identifier'}},
@@ -44,37 +45,30 @@ createRecord(state => ({
 ${checked}
 fn(state => ({data: {status: 'registered', recordId: state.data.result.value.data.recordIdentifier, traceId: state.data.result.traceId}}));`;
   const correction = `${validateSubmission}
-createChangeRequest(state => ({
-  operationIdentifier: ${literal(bindings.createCorrectionOperation)}, accessProfile: ${profile},
-  entityIdentifier: 'name-correction', route: 'name-corrections',
-  data: {record: state.data.recordId, name: state.data.name, reason: state.data.reason, supportingReference: state.data.supportingReference},
-  idempotencyKey: 'correction:' + state.data.submissionId,
-  as: 'result'
+fn(state => {
+  const {recordId, name, reason, supportingReference} = state.data;
+  if (typeof recordId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(recordId)) {
+    throw new Error('A valid Farm recordId is required');
+  }
+  return {...state, data: {...state.data, correctionInputs: {record: recordId, name, reason, supportingReference}}};
+});
+startProposal(state => ({
+  actionIdentifier: ${literal(bindings.correctionAction)}, accessProfile: ${correctionProfile},
+  inputs: state.data.correctionInputs,
+  idempotencyKey: 'correction:' + state.data.submissionId, as: 'result'
 }));
 ${checked}
-fn(state => ({...state, data: {...state.data, requestId: state.data.result.value.data.recordIdentifier}}));
-getRecord(state => ({route: 'name-corrections', recordIdentifier: state.data.requestId, accessProfile: ${profile}, as: 'result'}));
-${checked}
-fn(async state => {
-  const current = state.data.result.value.data;
-  const expected = {record: state.data.recordId, name: state.data.name, reason: state.data.reason, supportingReference: state.data.supportingReference};
-  if (Object.entries(expected).some(([field, value]) => typeof value !== 'string' || current.domainData[field] !== value)) {
-    throw new Error('Correction content does not match the submitted event');
+submitProposal(state => ({
+  proposalIdentifier: state.data.result.value.id, accessProfile: ${correctionProfile},
+  expectedInputs: state.data.correctionInputs,
+  idempotencyKey: 'correction-submit:' + state.data.submissionId, as: 'result'
+}));
+fn(state => {
+  const result = state.data.result;
+  if (result.branch !== 'succeeded' && result.branch !== 'already_submitted') {
+    throw new Error('Registry submission did not complete: ' + result.branch);
   }
-  const request = current.request;
-  const action = request?.actions?.find(action => action.operation === 'submit_request');
-  if (action) {
-    state = await executeLifecycleAction({
-      entityIdentifier: 'name-correction', route: 'name-corrections',
-      recordIdentifier: state.data.requestId, accessProfile: ${profile},
-      operation: 'submit_request', ifMatch: action.ifMatch,
-      idempotencyKey: 'correction-submit:' + state.data.submissionId, as: 'result'
-    })(state);
-    if (state.data.result.branch !== 'succeeded') throw new Error('Correction submission did not complete: ' + state.data.result.branch);
-  } else if (!['submitted', 'applied'].includes(request?.bregState)) {
-    throw new Error('Correction is not ready for submission');
-  }
-  return {data: {status: action ? 'submitted' : 'already_submitted', requestId: state.data.requestId}};
+  return {data: {status: 'submitted', proposalId: result.value.id}};
 });`;
   const evidence = `
 fn(state => {
@@ -84,7 +78,7 @@ fn(state => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   if (!event || typeof event.source !== 'string' || !event.source.startsWith('urn:registrystack:registry:') || event.source.length > 512 ||
       typeof event.id !== 'string' || !uuid.test(event.id) ||
-      !committed || typeof committed.recordId !== 'string' || !uuid.test(committed.recordId) ||
+      !committed || committed.recordType !== 'farm' || typeof committed.recordId !== 'string' || !uuid.test(committed.recordId) ||
       !Number.isSafeInteger(committed.revision) || committed.revision < 1 ||
       !Number.isSafeInteger(delivery?.generation) || delivery.generation < 1 ||
       typeof committed.values?.['local-identifier'] !== 'string' || !committed.values['local-identifier']) {
@@ -138,7 +132,7 @@ fn(state => ({data: {status: state.data.status, revision: state.data.revision}, 
   }
   return {
     id: projectId, name: 'registry-agriculture-pilot',
-    description: 'Synthetic governed registration, correction, and signed registration evidence.',
+    description: 'Synthetic governed registration, reviewed correction, and signed registration evidence.',
     workflows: [
       workflow('registration', [['register', '@openfn/language-registry-breg@local', registration, 'breg']]),
       workflow('correction', [['submit-correction', '@openfn/language-registry-breg@local', correction, 'breg']]),

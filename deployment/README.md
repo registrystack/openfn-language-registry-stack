@@ -1,6 +1,6 @@
 # Pilot container packaging
 
-This directory deploys matching Registry Stack **0.38.0** clients, tools,
+This directory deploys matching Registry Stack **0.45.0** clients, tools,
 runtimes and authored packages. ThunderID provides identity, Casework owns
 review decisions, and BREG owns authoritative records and explicit application.
 Evidence uses a persistent OpenBao Transit key through an official Agent Unix
@@ -9,12 +9,13 @@ Image identities and tool checksums are recorded in `images.lock.json` and
 `tools.sha256`.
 
 The current deployment is a fresh synthetic pilot. Its fixed Compose project is
-`registry-openfn-pilot-038`, and its private configuration is under
-`pilot/agriculture/.runtime-0.38`. The previous `registry-openfn-pilot` volumes and
-`pilot/agriculture/.runtime` directory are not reused, migrated or removed.
-Keep the matching legacy checkout at commit `65d988a` if that pilot must be
-operated again. A retained-record upgrade needs the product's staged migration
-procedure; running current tools against a 0.27 database is not that procedure.
+`registry-openfn-pilot-045`, and its private configuration is under
+`pilot/agriculture/.runtime-0.45`. The previous `registry-openfn-pilot-038`
+project and `pilot/agriculture/.runtime-0.38` directory are not reused, migrated,
+or removed. The still older `registry-openfn-pilot` project and
+`pilot/agriculture/.runtime` directory are also retained separately. A
+retained-record upgrade needs the product's staged migration procedure; running
+current tools against either older database is not that procedure.
 
 Run `./deployment/pilot.sh setup` for first setup, then `start`, `stop`, or
 `status`. Setup builds pinned images, prepares fresh owner-only inputs, checks
@@ -86,10 +87,14 @@ transfer private-file ownership explicitly and rebuild images. Do not widen
 secret permissions. `./deployment/check-permissions.sh` checks service mount
 readability without printing contents.
 
-The pilot uses the dedicated Docker subnet `10.254.38.0/24`, so it can start
-when Docker's default address pools are exhausted. If that subnet conflicts
-with another network, set `PILOT_SUBNET` to an unused private subnet before
-first setup and retain that setting when starting the same pilot.
+The pilot uses the dedicated Docker subnet `10.254.45.0/24`, so it can start
+when Docker's default address pools are exhausted. Evidence reaches its source
+and token endpoint through the private `issuer` service address, bound to the
+pilot CA and a destination allowance for the selected `/24` only. If the
+default subnet conflicts with another network, set `PILOT_SUBNET` to an unused
+`/24` inside `10.254.0.0/16` before first setup and retain that setting when
+starting the same pilot. Startup rejects a subnet that differs from the one
+bound into the prepared Evidence target.
 
 External Sentry reporting and Lightning usage tracking are disabled. Lightning
 retains dataclips and workflow history according to its pilot retention setting;
@@ -98,7 +103,7 @@ and Evidence audits, local review snapshots and destination effects have their
 own retention. Never publish raw logs or private runtime folders.
 
 Stop and restart retain data, keys and packages. Reset is separate and
-permanently deletes only the current 0.38 synthetic project and marked runtime:
+permanently deletes only the current 0.45 synthetic project and marked runtime:
 `./deployment/pilot.sh reset --confirm-delete-synthetic-data`. Neither setup,
 start, stop nor smoke resets data. A partially activated package or failed
 preparation is retained for inspection; follow the owning product recovery
@@ -111,6 +116,6 @@ replace that live acceptance proof.
 
 The local Evidence client uses explicit native SDK configuration with the pinned
 Transit public key, exact package revision and verification policy, and private-key
-JWT authentication. Registry Stack 0.38 progressive profiles reject private HTTPS
-origins. Source authorization and signed-response verification use the released
-SDK under this configuration.
+JWT authentication. The local HTTPS endpoint uses explicit trust configuration
+for the private pilot CA. Source authorization and signed-response verification
+use the released SDK under this configuration.

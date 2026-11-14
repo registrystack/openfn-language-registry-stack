@@ -42,26 +42,30 @@ class FakePilot(smoke.Pilot):
             return {'data': {'recordId': RECORD}}
         if self.request_state is None:
             self.request_state = 'submitted'
-        return {'data': {'requestId': REQUEST}}
+        return {'data': {'proposalId': REQUEST}}
 
     def farm(self):
         return {'data': {'recordIdentifier': RECORD, 'domainData': {'name': self.current_name}}}
 
     def current_request(self):
-        return {'data': {'recordIdentifier': REQUEST, 'request': {'bregState': self.request_state,
-            'review': {'result': {'state': self.review_result}}},
-            'domainData': {'record': RECORD, 'name': self.state['correctedName'], 'reason': self.state['reason'], 'supportingReference': self.state['supportingReference']}}}
+        return {'id': REQUEST, 'actionId': 'correct-farm-name', 'state': self.request_state,
+            'submissionVersion': 1, 'effectDigest': 'sha256:' + 'a' * 64,
+            'decision': None if self.review_result is None else {'status': self.review_result},
+            'input': {'record': RECORD, 'name': self.state['correctedName'],
+                'reason': self.state['reason'], 'supportingReference': self.state['supportingReference']}}
 
     def review(self, action):
         self.calls.append(('review', action))
         if action == 'approve':
             assert self.calls[-2] == ('review', 'inspect')
             assert self.current_name == self.state['registration']['name']
+            assert self.events == 1
             self.review_result = 'approved'
         if action == 'apply':
             assert self.calls[-2] == ('review', 'inspect')
             assert self.request_state == 'submitted'
             assert self.review_result == 'approved'
+            assert self.events == 1
             self.request_state = 'applied'
             self.current_name = self.state['correctedName']
             self.events += 1
@@ -72,6 +76,12 @@ class FakePilot(smoke.Pilot):
 
 
 class SmokeTests(unittest.TestCase):
+    def test_lookup_selection_uses_current_record_type_metadata(self):
+        lookup = {'id': 'records.farm.lookup', 'operation': 'lookup',
+            'sourceRecordType': 'farm', 'accessProfile': 'openfn-service',
+            'path': '/v1/records/farms:lookup'}
+        self.assertIs(smoke.Pilot.select(None, {'operations': [lookup]}, 'farm', 'lookup'), lookup)
+
     def test_main_and_retained_replay_keep_review_order_and_event_count(self):
         with tempfile.TemporaryDirectory() as directory:
             pilot = FakePilot(Path(directory) / 'state.json')
@@ -88,7 +98,7 @@ class SmokeTests(unittest.TestCase):
     def test_partial_approval_recovers_without_approving_again(self):
         with tempfile.TemporaryDirectory() as directory:
             pilot = FakePilot(Path(directory) / 'state.json')
-            pilot.state.update(recordId=RECORD, requestId=REQUEST, baseline={'acceptedEvents': 0}, phase='approved')
+            pilot.state.update(recordId=RECORD, proposalId=REQUEST, baseline={'acceptedEvents': 0}, phase='approved')
             pilot.current_name = 'Old Name'
             pilot.request_state = 'submitted'
             pilot.review_result = 'approved'
@@ -97,6 +107,20 @@ class SmokeTests(unittest.TestCase):
             self.assertEqual(pilot.events, 2)
             self.assertNotIn(('review', 'approve'), pilot.calls)
             self.assertIn(('review', 'apply'), pilot.calls)
+
+    def test_rejected_or_changes_requested_correction_is_not_applied(self):
+        for result in ['rejected', 'changes-requested']:
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as directory:
+                pilot = FakePilot(Path(directory) / 'state.json')
+                pilot.state.update(recordId=RECORD, proposalId=REQUEST, baseline={'acceptedEvents': 0})
+                pilot.current_name = 'Old Name'
+                pilot.request_state = 'rejected' if result == 'rejected' else 'submitted'
+                pilot.review_result = result
+                pilot.events = 1
+                with self.assertRaisesRegex(smoke.SmokeFailure, result):
+                    pilot.run()
+                self.assertNotIn(('review', 'apply'), pilot.calls)
+                self.assertEqual(pilot.events, 1)
 
     def test_restart_requires_completed_main_and_only_restarts_retained_services(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -125,19 +149,20 @@ class SmokeTests(unittest.TestCase):
             with self.assertRaises(smoke.SmokeFailure):
                 smoke.operation_path({'path': path})
 
-    def test_request_id_recovery_accepts_sync_output_without_replaying(self):
+    def test_proposal_id_recovery_accepts_sync_output_without_replaying(self):
         with tempfile.TemporaryDirectory() as directory:
             pilot = FakePilot(Path(directory) / 'state.json')
-            for output in [{'data': {'requestId': REQUEST}}, {'data': {'data': {'requestId': REQUEST}}}]:
+            for output in [{'data': {'proposalId': REQUEST}}, {'data': {'data': {'proposalId': REQUEST}}}]:
                 with patch.object(pilot, 'metadata', side_effect=AssertionError('Unexpected replay')):
-                    self.assertEqual(pilot.recover_request_id(output), REQUEST)
+                    self.assertEqual(pilot.recover_proposal_id(output), REQUEST)
 
     def test_changed_current_request_refuses_review(self):
         with tempfile.TemporaryDirectory() as directory:
             pilot = FakePilot(Path(directory) / 'state.json')
             pilot.state['recordId'] = RECORD
+            pilot.state['proposalId'] = REQUEST
             current = pilot.current_request()
-            current['data']['domainData']['supportingReference'] = 'other-submission'
+            current['input']['supportingReference'] = 'other-submission'
             with self.assertRaises(smoke.SmokeFailure):
                 pilot.inspect_content(current)
 

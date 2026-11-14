@@ -18,6 +18,18 @@ EVENT = '22222222-2222-4222-8222-222222222222'
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_replayable_dead_letter_uses_the_v045_database_state(self):
+        self.assertTrue(recovery.is_dead_lettered({'state': 'dead-lettered'}))
+        self.assertFalse(recovery.is_dead_lettered({'state': 'dead_lettered'}))
+        self.assertFalse(recovery.is_dead_lettered({'state': 'delivered'}))
+
+    def test_replay_uses_the_v045_hook_command(self):
+        command = recovery.breg_replay_command(
+            EVENT, 'events.farm.farm-created-v1.webhook', 3)
+        self.assertEqual(command[4:8], ['tools', 'bregctl', '--format', 'json'])
+        self.assertEqual(command[8:10], ['hook', 'replay'])
+        self.assertNotIn('webhook', command)
+
     def test_rpc_scope_and_sanitized_report(self):
         report = {'workOrders': []}
         with patch.object(recovery, 'captured', return_value='Unrelated console output\nPILOT_RECOVERY_JSON:' + json.dumps(report) + '\n:ok') as command:
@@ -97,13 +109,28 @@ class RecoveryTests(unittest.TestCase):
                 driver.before_accept()
             accepted.assert_not_called()
 
+    def test_interrupted_dead_letter_observation_resumes_from_retained_event(self):
+        driver = recovery.Recovery.__new__(recovery.Recovery)
+        scenario = {'phase': 'forwarding-failure', 'eventId': EVENT}
+        dead = {'state': 'dead-lettered', 'payloadAvailable': True, 'attempt': 5,
+            'generation': 1, 'deliveryId': 'events.farm.farm-created-v1.webhook'}
+        delivered = {**dead, 'state': 'delivered', 'generation': 2}
+        with patch.object(driver, 'scenario', return_value=scenario), \
+            patch.object(recovery, 'delivery', side_effect=[dead, delivered]), \
+            patch.object(recovery, 'captured') as command, patch.object(driver, 'accepted'), \
+            patch.object(driver, 'verify_effect'), patch.object(driver, 'save'):
+            driver.before_accept()
+        self.assertEqual(scenario['deadLetterGeneration'], 1)
+        self.assertEqual(scenario['phase'], 'complete')
+        self.assertEqual(command.call_args.args[0][8:10], ['hook', 'replay'])
+
     def test_smoke_replay_waits_for_success_and_preserves_existing_effect(self):
         driver = recovery.Recovery.__new__(recovery.Recovery)
         driver.pilot = SimpleNamespace(state={'recordId': RECORD})
         driver.state = {}
         orders = [{'eventId': EVENT, 'state': 'success'}]
         rows = {'effects': [{'event_id': EVENT}], 'records': [{'revision': 1}]}
-        dead = {'state': 'dead_lettered', 'payloadAvailable': True, 'generation': 1,
+        dead = {'state': 'dead-lettered', 'payloadAvailable': True, 'generation': 1,
             'deliveryId': 'events.farm.farm-created-v1.webhook'}
         settled = {'state': 'delivered', 'payloadAvailable': False, 'generation': 2}
         with patch.object(driver, 'orders', return_value=orders), patch.object(driver, 'effects', return_value=rows), \
@@ -114,6 +141,7 @@ class RecoveryTests(unittest.TestCase):
             self.assertIn(EVENT, args)
             self.assertEqual(args[args.index('--runtime-config') + 1], '/config/breg/runtime.yaml')
             self.assertEqual(args[-2:], ['--expected-generation', '1'])
+            self.assertEqual(args[8:10], ['hook', 'replay'])
         with patch.object(driver, 'orders', return_value=[{'state': 'pending'}]), patch.object(recovery, 'captured') as command:
             with self.assertRaises(recovery.SmokeFailure):
                 driver.replay_smoke()

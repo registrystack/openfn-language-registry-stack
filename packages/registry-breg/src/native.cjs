@@ -4,7 +4,7 @@
 const { types: { isProxy } } = require("node:util");
 const { breg } = require("@registrystack/client");
 const { BaseRegistryClientError } = breg;
-function copy(value, kind = "invalid_request") {
+function copy(value, kind = "invalid-request") {
   const active = new Set();
   let nodes = 0;
   let bytes = 0;
@@ -48,27 +48,17 @@ function copy(value, kind = "invalid_request") {
 class BaseRegistryClient extends breg.BaseRegistryClient {
   constructor(config) {
     const nativeConfig = copy(config, "configuration");
-    if (Object.hasOwn(nativeConfig, "maxResponseBytes")) {
-      throw new BaseRegistryClientError({
-        kind: "configuration",
-        message: "Base Registry configuration uses an unsupported field",
-      });
-    }
-    if (nativeConfig.maximumResponseBytes !== undefined) {
-      // The pinned 0.38 client uses the shorter spelling internally.
-      nativeConfig.maxResponseBytes = nativeConfig.maximumResponseBytes;
-      delete nativeConfig.maximumResponseBytes;
-    }
     super(nativeConfig);
   }
 }
 for (const [method, indexes] of [
   ["getRecord", [2]], ["listRecords", [1]], ["continueList", [0]],
-  ["lookupRecord", [2, 3]], ["createRecord", [1]], ["patchRecord", [3]], ["lifecycleActions", [1]],
+  ["lookupRecord", [2, 3]], ["createRecord", [1]], ["patchRecord", [3]],
+  ["startProposal", [1]], ["prepareProposal", [2]],
 ]) {
   BaseRegistryClient.prototype[method] = function (...args) {
     for (const index of indexes) if (args[index] !== undefined) args[index] = copy(args[index]);
     return breg.BaseRegistryClient.prototype[method].apply(this, args);
   };
 }
-module.exports = { BaseRegistryClient, BaseRegistryClientError };
+module.exports = { BaseRegistryClient, BaseRegistryClientError, copy };

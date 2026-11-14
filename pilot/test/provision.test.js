@@ -20,7 +20,8 @@ async function fixture(t) {
   await privateFile(join(files, 'breg-credential.json'), JSON.stringify({breg: {synthetic: 'private-breg'}}));
   await privateFile(join(files, 'evidence-credential.json'), JSON.stringify({evidence: {profilePath: '/synthetic/profile.json'}}));
   await privateFile(join(root, 'workflow-bindings.json'), JSON.stringify({
-    breg: {accessProfile: 'synthetic', farmCreateOperation: 'records.farm.create', correctionCreateOperation: 'records.name-correction.create'},
+    breg: {accessProfile: 'synthetic', farmCreateOperation: 'records.farm.create',
+      correctionAction: 'correct-farm-name', correctionAccessProfile: 'synthetic'},
     evidence: {requirement: 'holding-registered', registeredConcept: 'registered'},
   }));
   return {root, files, secrets};

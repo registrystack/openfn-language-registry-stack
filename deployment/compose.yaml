@@ -1,4 +1,4 @@
-name: registry-openfn-pilot-038
+name: registry-openfn-pilot-045
 
 services:
   volume-init:
@@ -20,7 +20,7 @@ services:
 
   lightning-db:
     image: postgres:17.11@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
-    env_file: ../pilot/agriculture/.runtime-0.38/openfn/postgres.env
+    env_file: ../pilot/agriculture/.runtime-0.45/openfn/postgres.env
     volumes:
       - lightning-db:/var/lib/postgresql/data
     healthcheck:
@@ -31,12 +31,12 @@ services:
     restart: unless-stopped
 
   breg-db:
-    image: registry-openfn-postgres:pilot-038
+    image: registry-openfn-postgres:pilot-045
     platform: linux/amd64
-    env_file: ../pilot/agriculture/.runtime-0.38/breg-db/postgres.env
+    env_file: ../pilot/agriculture/.runtime-0.45/breg-db/postgres.env
     volumes:
       - breg-db:/var/lib/postgresql/data
-      - ../pilot/agriculture/.runtime-0.38/breg-db:/config/postgres:ro
+      - ../pilot/agriculture/.runtime-0.45/breg-db:/config/postgres:ro
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 3s
@@ -45,12 +45,12 @@ services:
     restart: unless-stopped
 
   casework-db:
-    image: registry-openfn-postgres:pilot-038
+    image: registry-openfn-postgres:pilot-045
     platform: linux/amd64
-    env_file: ../pilot/agriculture/.runtime-0.38/casework-db/postgres.env
+    env_file: ../pilot/agriculture/.runtime-0.45/casework-db/postgres.env
     volumes:
       - casework-db:/var/lib/postgresql/data
-      - ../pilot/agriculture/.runtime-0.38/casework-db:/config/postgres:ro
+      - ../pilot/agriculture/.runtime-0.45/casework-db:/config/postgres:ro
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 3s
@@ -60,9 +60,9 @@ services:
 
   lightning:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-lightning:pilot-038
+    image: registry-openfn-lightning:pilot-045
     platform: linux/amd64
-    env_file: ../pilot/agriculture/.runtime-0.38/openfn/lightning.env
+    env_file: ../pilot/agriculture/.runtime-0.45/openfn/lightning.env
     environment:
       PORT: '4000'
       URL_SCHEME: http
@@ -73,7 +73,7 @@ services:
       OPENFN_ADAPTORS_REPO: /opt/registry-adaptors
     volumes:
       - ../pilot/lightning:/opt/pilot/lightning:ro
-      - ../pilot/agriculture/.runtime-0.38/openfn/secrets:/run/pilot-secrets
+      - ../pilot/agriculture/.runtime-0.45/openfn/secrets:/run/pilot-secrets
     ports: ['127.0.0.1:4010:4000']
     depends_on:
       lightning-db: {condition: service_healthy}
@@ -91,11 +91,11 @@ services:
     working_dir: /opt/thunderid
     command: [./start.sh]
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/issuer/database:/opt/thunderid/database
-      - ../pilot/agriculture/.runtime-0.38/issuer/certs:/opt/thunderid/config/certs
-      - ../pilot/agriculture/.runtime-0.38/issuer/secrets:/opt/thunderid/config/secrets
-      - ../pilot/agriculture/.runtime-0.38/issuer/deployment.yaml:/opt/thunderid/deployment.yaml:ro
-      - ../pilot/agriculture/.runtime-0.38/issuer/resources:/opt/thunderid/config/resources:ro
+      - ../pilot/agriculture/.runtime-0.45/issuer/database:/opt/thunderid/database
+      - ../pilot/agriculture/.runtime-0.45/issuer/certs:/opt/thunderid/config/certs
+      - ../pilot/agriculture/.runtime-0.45/issuer/secrets:/opt/thunderid/config/secrets
+      - ../pilot/agriculture/.runtime-0.45/issuer/deployment.yaml:/opt/thunderid/deployment.yaml:ro
+      - ../pilot/agriculture/.runtime-0.45/issuer/resources:/opt/thunderid/config/resources:ro
     ports:
       - '127.0.0.1:4011:8097'
       - '127.0.0.1:4012:8095'
@@ -110,8 +110,8 @@ services:
     command: [nginx, -g, 'daemon off;', -c, /etc/nginx/nginx.conf]
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/server.crt:/etc/pilot-tls/server.crt:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/server.key:/etc/pilot-tls/server.key:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/server.crt:/etc/pilot-tls/server.crt:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/server.key:/etc/pilot-tls/server.key:ro
     depends_on:
       issuer: {condition: service_started}
     restart: unless-stopped
@@ -134,7 +134,7 @@ services:
       - ./openbao/server.hcl:/openbao/config/server.hcl:ro
       - ./openbao/evidence-signing.hcl:/openbao/policy/evidence-signing.hcl:ro
       - ./openbao/bootstrap.sh:/openbao/bootstrap.sh:ro
-      - ../pilot/agriculture/.runtime-0.38/openbao:/run/openbao-secrets
+      - ../pilot/agriculture/.runtime-0.45/openbao:/run/openbao-secrets
     depends_on:
       issuer: {condition: service_started}
       volume-init: {condition: service_completed_successfully}
@@ -150,8 +150,8 @@ services:
       SKIP_CHOWN: 'true'
     volumes:
       - ./openbao/evidence-agent.hcl:/openbao/config/evidence-agent.hcl:ro
-      - ../pilot/agriculture/.runtime-0.38/openbao/role-id:/run/openbao-credentials/role-id:ro
-      - ../pilot/agriculture/.runtime-0.38/openbao/secret-id:/run/openbao-credentials/secret-id:ro
+      - ../pilot/agriculture/.runtime-0.45/openbao/role-id:/run/openbao-credentials/role-id:ro
+      - ../pilot/agriculture/.runtime-0.45/openbao/secret-id:/run/openbao-credentials/secret-id:ro
       - {type: volume, source: evidence-transit, target: /run/registry-evidence, volume: {nocopy: true}}
     depends_on:
       openbao: {condition: service_started}
@@ -160,14 +160,14 @@ services:
 
   breg:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: ghcr.io/registrystack/breg:v0.38.0@sha256:82ee71ae85411dcf53530f91f33202d23d3cec135b4bb2049dff5c4558a7dafa
+    image: ghcr.io/registrystack/breg:v0.45.0@sha256:4e039b26800952c20926a1cdc1b138232c564ed2ec8f73f7b23c3234140fd7d9
     platform: linux/amd64
     network_mode: service:issuer
     command: [--runtime-config, /config/breg/runtime.yaml]
     environment:
       SSL_CERT_FILE: /config/breg/secrets/trust-bundle.pem
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/breg:/config/breg:ro
+      - ../pilot/agriculture/.runtime-0.45/breg:/config/breg:ro
       - {type: volume, source: breg-audit, target: /var/lib/registry-breg, volume: {nocopy: true}}
     depends_on:
       issuer: {condition: service_started}
@@ -176,14 +176,14 @@ services:
 
   casework:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: ghcr.io/registrystack/casework:v0.38.0@sha256:45eee73bb656eec5c64a9ebb508b28b1676b8b96f38b4a107b2de871ccbce0d4
+    image: ghcr.io/registrystack/casework:v0.45.0@sha256:d0446630798f4f53f291f10f5018eb00cd8883e4383ebb7f9b897a1405eee72d
     platform: linux/amd64
     network_mode: service:issuer
     command: [--runtime-config, /config/casework/runtime.yaml, serve]
     environment:
       SSL_CERT_FILE: /config/casework/secrets/pilot-ca.pem
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/casework:/config/casework:ro
+      - ../pilot/agriculture/.runtime-0.45/casework:/config/casework:ro
       - {type: volume, source: casework-audit, target: /var/lib/registry-casework, volume: {nocopy: true}}
     depends_on:
       issuer: {condition: service_started}
@@ -192,15 +192,15 @@ services:
 
   evidence:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: ghcr.io/registrystack/evidence:v0.38.0@sha256:0a91d8ecd795db2d738b521081e3d78d6fa47e0acbb8f1ad929fcc0c41e2a4d5
+    image: ghcr.io/registrystack/evidence:v0.45.0@sha256:8b9229af2308f70d3cbdc8ac8131fc670b929bb3db174c153719de21135447ab
     platform: linux/amd64
     network_mode: service:issuer
     command: [serve, --runtime-config, /config/evidence/runtime.yaml]
     environment:
       SSL_CERT_FILE: /config/evidence/tls/pilot-ca.pem
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/evidence:/config/evidence:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/config/evidence/tls/pilot-ca.pem:ro
+      - ../pilot/agriculture/.runtime-0.45/evidence:/config/evidence:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/config/evidence/tls/pilot-ca.pem:ro
       - {type: volume, source: evidence-audit, target: /var/lib/registry-evidence, volume: {nocopy: true}}
       - {type: volume, source: evidence-transit, target: /run/registry-evidence, volume: {nocopy: true}}
     depends_on:
@@ -212,10 +212,10 @@ services:
 
   worker:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-worker:pilot-038
+    image: registry-openfn-worker:pilot-045
     platform: linux/amd64
     network_mode: service:issuer
-    env_file: ../pilot/agriculture/.runtime-0.38/openfn/worker.env
+    env_file: ../pilot/agriculture/.runtime-0.45/openfn/worker.env
     environment:
       OPENFN_ADAPTORS_REPO: /opt/registry-adaptors
       SSL_CERT_FILE: /config/evidence-client/pilot-ca.pem
@@ -225,9 +225,9 @@ services:
       WORKER_SENTRY_DSN: ''
       SENTRY_DSN: ''
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/evidence-client:/config/evidence-client:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/config/evidence-client/pilot-ca.pem:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/etc/ssl/certs/ca-certificates.crt:ro
+      - ../pilot/agriculture/.runtime-0.45/evidence-client:/config/evidence-client:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/config/evidence-client/pilot-ca.pem:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/etc/ssl/certs/ca-certificates.crt:ro
       - {type: volume, source: worker-cache, target: /var/cache/openfn, volume: {nocopy: true}}
     depends_on:
       issuer: {condition: service_started}
@@ -236,11 +236,11 @@ services:
 
   bridge:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-services:pilot-038
+    image: registry-openfn-services:pilot-045
     platform: linux/amd64
     network_mode: service:issuer
     command: [node, services/event-bridge/src/server.js]
-    env_file: ../pilot/agriculture/.runtime-0.38/openfn/bridge.env
+    env_file: ../pilot/agriculture/.runtime-0.45/openfn/bridge.env
     environment:
       BREG_BIND_HOST: '127.0.0.1'
       BREG_EVENT_BODY_FORMAT: hook-envelope-v1
@@ -255,7 +255,7 @@ services:
       MAX_DELIVERY_SKEW_SECONDS: '300'
       OPENFN_TIMEOUT_MS: '3000'
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/bridge:/config/bridge:ro
+      - ../pilot/agriculture/.runtime-0.45/bridge:/config/bridge:ro
     depends_on:
       issuer: {condition: service_started}
       lightning: {condition: service_healthy}
@@ -263,7 +263,7 @@ services:
 
   destination:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-services:pilot-038
+    image: registry-openfn-services:pilot-045
     platform: linux/amd64
     command: [node, services/destination/src/server.js]
     environment:
@@ -271,7 +271,7 @@ services:
       DESTINATION_API_KEY_FILE: /config/destination/api-key
       DESTINATION_DB_PATH: /data/destination.sqlite
     volumes:
-      - ../pilot/agriculture/.runtime-0.38/destination:/config/destination:ro
+      - ../pilot/agriculture/.runtime-0.45/destination:/config/destination:ro
       - {type: volume, source: destination-data, target: /data, volume: {nocopy: true}}
     depends_on:
       volume-init: {condition: service_completed_successfully}
@@ -279,24 +279,24 @@ services:
 
   tools:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-tools:pilot-038
+    image: registry-openfn-tools:pilot-045
     platform: linux/amd64
     network_mode: service:issuer
     profiles: [tools]
     working_dir: /workspace
     environment:
       SSL_CERT_FILE: /config/breg/secrets/trust-bundle.pem
-      PILOT_RUNTIME_ROOT: /workspace/pilot/agriculture/.runtime-0.38
+      PILOT_RUNTIME_ROOT: /workspace/pilot/agriculture/.runtime-0.45
     volumes:
       - ..:/workspace:ro
       - ../pilot/agriculture:/opt/pilot/agriculture:ro
-      - ../pilot/agriculture/.runtime-0.38:/workspace/pilot/agriculture/.runtime-0.38
-      - ../pilot/agriculture/.runtime-0.38/breg:/config/breg
-      - ../pilot/agriculture/.runtime-0.38/casework:/config/casework
-      - ../pilot/agriculture/.runtime-0.38/evidence:/config/evidence
-      - ../pilot/agriculture/.runtime-0.38/evidence-client:/config/evidence-client
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/config/evidence/tls/pilot-ca.pem:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/config/evidence-client/pilot-ca.pem:ro
+      - ../pilot/agriculture/.runtime-0.45:/workspace/pilot/agriculture/.runtime-0.45
+      - ../pilot/agriculture/.runtime-0.45/breg:/config/breg
+      - ../pilot/agriculture/.runtime-0.45/casework:/config/casework
+      - ../pilot/agriculture/.runtime-0.45/evidence:/config/evidence
+      - ../pilot/agriculture/.runtime-0.45/evidence-client:/config/evidence-client
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/config/evidence/tls/pilot-ca.pem:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/config/evidence-client/pilot-ca.pem:ro
       - {type: volume, source: evidence-transit, target: /run/registry-evidence, volume: {nocopy: true}}
       - {type: volume, source: breg-audit, target: /var/lib/registry-breg, volume: {nocopy: true}}
       - {type: volume, source: casework-audit, target: /var/lib/registry-casework, volume: {nocopy: true}}
@@ -310,15 +310,15 @@ services:
 
   sdk-tools:
     user: "${PILOT_UID:-1000}:${PILOT_GID:-1000}"
-    image: registry-openfn-worker:pilot-038
+    image: registry-openfn-worker:pilot-045
     platform: linux/amd64
     network_mode: service:issuer
     profiles: [tools]
     working_dir: /opt/registry-adaptors
     volumes:
       - ../pilot/agriculture:/opt/pilot/agriculture:ro
-      - ../pilot/agriculture/.runtime-0.38/evidence-client:/config/evidence-client:ro
-      - ../pilot/agriculture/.runtime-0.38/tls/ca.pem:/run/pilot-ca.pem:ro
+      - ../pilot/agriculture/.runtime-0.45/evidence-client:/config/evidence-client:ro
+      - ../pilot/agriculture/.runtime-0.45/tls/ca.pem:/run/pilot-ca.pem:ro
     depends_on:
       issuer: {condition: service_started}
       evidence: {condition: service_started}
@@ -341,4 +341,4 @@ networks:
   default:
     ipam:
       config:
-        - subnet: ${PILOT_SUBNET:-10.254.38.0/24}
+        - subnet: ${PILOT_SUBNET:-10.254.45.0/24}

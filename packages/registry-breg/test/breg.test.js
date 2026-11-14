@@ -6,8 +6,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import compile from "@openfn/compiler";
 import run from "@openfn/runtime";
-import { execute, discoverRegistry, getEntitySchema, getRecord, lookupRecord, listRecords, continueList, createRecord, patchRecord, createChangeRequest, executeLifecycleAction } from "../src/index.js";
-import { ID, ETAG, ACTION_ETAG, TRACE, PROFILE, metadata, record, receipt } from "./fixtures.js";
+import { execute, discoverRegistry, getRecordSchema, getRecord, lookupRecord, listRecords, continueList, createRecord, patchRecord } from "../src/index.js";
+import { ID, ETAG, TRACE, PROFILE, metadata, record } from "./fixtures.js";
 
 async function server(handler) {
   const requests = [];
@@ -29,7 +29,6 @@ function state(baseUrl) { return { configuration: { breg: { baseUrl, authorizati
 function regular(req, res) {
   if (req.url.includes("/v1/registry")) return res.end(JSON.stringify(metadata()));
   if (req.url.includes("/v1/schemas/")) return res.end('{"type":"object"}');
-  if (req.url.includes("/actions/")) { res.removeHeader("link"); return res.end(JSON.stringify(receipt())); }
   if (!req.url.includes("lookup")) res.setHeader("etag", ETAG);
   if (req.method === "POST" && !req.url.includes("lookup")) {
     res.statusCode = 201;
@@ -38,13 +37,12 @@ function regular(req, res) {
   res.end(JSON.stringify(record()));
 }
 const write = { operationIdentifier: "records.company.create", accessProfile: PROFILE, idempotencyKey: "synthetic-create-001", data: { legalName: "Example Ltd" } };
-const lifecycle = { entityIdentifier: "company", route: "companies", recordIdentifier: ID, accessProfile: PROFILE, operation: "submit_request", ifMatch: ACTION_ETAG, idempotencyKey: "synthetic-submit-001" };
 
 test("native discovery, exact lookup, read, and schema preserve composition configuration", async () => {
   const stub = await server(regular);
   try {
     const initial = state(stub.baseUrl);
-    const result = await execute(discoverRegistry({ accessProfile: PROFILE, as: "metadata" }), lookupRecord({ route: "companies", selector: "by-name", values: { legalName: "Example Ltd" }, accessProfile: PROFILE, as: "lookup" }), getRecord({ route: "companies", recordIdentifier: ID, as: "record" }), getEntitySchema({ entityIdentifier: "company", as: "schema" }))(initial);
+    const result = await execute(discoverRegistry({ accessProfile: PROFILE, as: "metadata" }), lookupRecord({ route: "companies", selector: "by-name", values: { legalName: "Example Ltd" }, accessProfile: PROFILE, as: "lookup" }), getRecord({ route: "companies", recordIdentifier: ID, as: "record" }), getRecordSchema({ recordTypeIdentifier: "company", as: "schema" }))(initial);
     for (const key of ["metadata", "lookup", "record", "schema"]) assert.equal(result.data[key].branch, "succeeded", JSON.stringify(result.data[key]));
     assert.equal(result.configuration, initial.configuration);
     assert.deepEqual(JSON.parse(stub.requests[1].body), { selector: "by-name", values: { legalName: "Example Ltd" } });
@@ -89,32 +87,13 @@ test("metadata-selected create and patch carry caller keys and exact record ETag
 test("missing keys/preconditions and arbitrary operation URLs cannot write", async () => {
   const stub = await server(regular);
   try {
-    for (const op of [createRecord({ ...write, idempotencyKey: undefined }), patchRecord({ ...write, etag: undefined }), executeLifecycleAction({ ...lifecycle, ifMatch: undefined })]) {
+    for (const op of [createRecord({ ...write, idempotencyKey: undefined }), patchRecord({ ...write, etag: undefined })]) {
       assert.equal((await op(state(stub.baseUrl))).data.breg.branch, "invalid_request");
     }
     assert.equal(stub.requests.length, 0);
     const result = await createRecord({ ...write, operationIdentifier: "https://attacker.invalid/write" })(state(stub.baseUrl));
     assert.equal(result.data.breg.branch, "denied");
     assert.equal(stub.requests.length, 1);
-    const draft = await createChangeRequest(write)(state(stub.baseUrl));
-    assert.equal(draft.data.breg.branch, "succeeded");
-  } finally { await stub.close(); }
-});
-
-test("native lifecycle promotion executes exact action and refuses a changed precondition", async () => {
-  const stub = await server((req, res) => {
-    if (req.method === "GET" && req.url.includes(`/companies/${ID}`)) { res.setHeader("etag", ETAG); return res.end(JSON.stringify(record(true))); }
-    regular(req, res);
-  });
-  try {
-    const result = await executeLifecycleAction(lifecycle)(state(stub.baseUrl));
-    assert.equal(result.data.breg.branch, "succeeded", JSON.stringify(result.data.breg));
-    assert.equal(stub.requests[2].headers["if-match"], ACTION_ETAG);
-    assert.equal(stub.requests[2].headers["idempotency-key"], lifecycle.idempotencyKey);
-    assert.deepEqual(JSON.parse(stub.requests[2].body), {});
-    const stale = await executeLifecycleAction({ ...lifecycle, ifMatch: ETAG })(state(stub.baseUrl));
-    assert.equal(stale.data.breg.branch, "conflict");
-    assert.equal(stub.requests.filter(req => req.method === "POST").length, 1);
   } finally { await stub.close(); }
 });
 
@@ -149,7 +128,7 @@ test("safe stable failures distinguish not found, denied, conflict and temporary
   }
 });
 
-test("0.38 located request and query refusals stay invalid requests without exposing paths", async () => {
+test("located request and query refusals stay invalid requests without exposing paths", async () => {
   for (const [code, detail, fieldPath] of [
     ["request.invalid", "The request is invalid.", "/data/legalName"],
     ["query.invalid", "The query request is invalid.", "$select"],
@@ -175,7 +154,7 @@ test("0.38 located request and query refusals stay invalid requests without expo
 test("privateKeyJwt configuration reaches native validation without disclosing keys", async () => {
   const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const key = { ...privateKey.export({ format: "jwk" }), alg: "ES256", kid: "synthetic-key" };
-  const configured = { configuration: { baseUrl: "http://127.0.0.1:1", authorization: { privateKeyJwt: { tokenEndpoint: "https://127.0.0.1:1/token", clientId: "synthetic-client", clientKey: key, requestTimeoutMilliseconds: 100, connectTimeoutMilliseconds: 100 } } }, data: {} };
+  const configured = { configuration: { baseUrl: "http://127.0.0.1:1", authorization: { privateKeyJwt: { tokenEndpoint: "https://127.0.0.1:1/token", clientId: "synthetic-client", clientKey: key, attemptTimeoutMilliseconds: 100, connectTimeoutMilliseconds: 100 } } }, data: {} };
   const result = await discoverRegistry()(configured);
   assert.equal(result.data.breg.branch, "retryable_infrastructure", JSON.stringify(result.data.breg));
   assert.ok(!JSON.stringify(result.data).includes(key.d));
@@ -226,23 +205,6 @@ test("malformed plain-data graphs fail without accessing properties or sending m
   } finally { await stub.close(); }
 });
 
-test("record action URLs cannot create authority outside metadata", async () => {
-  const stub = await server((req, res) => {
-    if (req.url.includes(`/companies/${ID}`)) {
-      const body = record(true);
-      body.data.request.actions[0].href = "https://attacker.invalid/mutate";
-      return res.end(JSON.stringify(body));
-    }
-    regular(req, res);
-  });
-  try {
-    const result = await executeLifecycleAction(lifecycle)(state(stub.baseUrl));
-    assert.notEqual(result.data.breg.branch, "succeeded");
-    assert.equal(stub.requests.length, 2);
-    assert.equal(stub.requests.some(req => req.method !== "GET"), false);
-  } finally { await stub.close(); }
-});
-
 test("redirects and malformed success responses fail closed without automatic follow-up", async () => {
   for (const redirect of [true, false]) {
     const stub = await server((_req, res) => {
@@ -256,26 +218,6 @@ test("redirects and malformed success responses fail closed without automatic fo
       assert.ok(!JSON.stringify(result.data.breg).includes("secret-malformed-response-canary"));
     } finally { await stub.close(); }
   }
-});
-
-test("compiled governed draft creation and explicit submission keep separate keys", async () => {
-  const stub = await server((req, res) => {
-    if (req.url.includes("/v1/registry") || req.url.includes("/actions/")) return regular(req, res);
-    res.setHeader("etag", ETAG);
-    if (req.method === "POST") { res.statusCode = 201; res.setHeader("location", `/tenant/v1/records/companies/${ID}`); }
-    const value = record(req.method !== "POST");
-    res.end(JSON.stringify(value));
-  });
-  try {
-    const { code } = compile(readFileSync(new URL("../jobs/create-and-submit.js", import.meta.url), "utf8"));
-    const result = await run({ workflow: { steps: [{ id: "breg", expression: code }], start: "breg" }, options: { start: "breg" } },
-      { ...state(stub.baseUrl), data: { createOperationIdentifier: "records.company.create", accessProfile: PROFILE, requestFields: { legalName: "Example Ltd" }, createIdempotencyKey: "synthetic-draft-001", submitIdempotencyKey: "synthetic-draft-submit-001", requestRoute: "companies" } },
-      { linker: { modules: { "@openfn/language-common": { path: fileURLToPath(new URL("../../../node_modules/@openfn/language-common", import.meta.url)) }, "../src/index.js": { path: fileURLToPath(new URL("..", import.meta.url)) } }, cacheKey: `breg-submit-${process.pid}` } });
-    assert.equal(result.errors, undefined, JSON.stringify(result.errors));
-    assert.equal(result.data.submission?.branch, "succeeded", JSON.stringify(result.data));
-    assert.equal("configuration" in result, false);
-    assert.deepEqual(stub.requests.filter(req => req.method === "POST").map(req => req.headers["idempotency-key"]), ["synthetic-draft-001", "synthetic-draft-submit-001"]);
-  } finally { await stub.close(); }
 });
 
 test("stale patch ETag conflicts without overwriting or acquiring a replacement precondition", async () => {

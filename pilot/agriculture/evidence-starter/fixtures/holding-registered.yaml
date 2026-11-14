@@ -1,160 +1,321 @@
-{
-  "fixture": "registry.evidence.reference.holding-registered/v1",
-  "synthetic_only": true,
-  "common": {
-    "observed_at": "2026-09-06T00:00:00Z",
-    "selectors": {
-      "subject": {
-        "profile": "breg-8-registry-4-farm-19-by-local-identifier",
-        "values": {
-          "local-identifier": "SYNTHETIC-FARM-001"
-        }
-      }
-    },
-    "expectedRequestParts": {
-      "query": [
-        {
-          "name": "accessProfile",
-          "value": "evidence-source"
-        },
-        {
-          "name": "$select",
-          "value": "localIdentifier"
-        }
-      ],
-      "body": {
-        "selector": "by-local-identifier",
-        "values": {
-          "localIdentifier": "SYNTHETIC-FARM-001"
-        }
-      }
-    },
-    "expectedTransport": {
-      "path": "/v1/records/farms:lookup",
-      "fixedHeaders": [
-        {
-          "name": "Accept",
-          "value": "application/json"
-        }
-      ]
-    }
-  },
-  "cases": [
-    {
-      "id": "positive",
-      "response": {
-        "data": {
-          "domainData": {
-            "localIdentifier": "SYNTHETIC-FARM-001",
-            "name": "SYNTHETIC-PRIVATE-NAME"
-          }
-        }
-      },
-      "expected": {
-        "lookup": "match",
-        "derivationRuns": true,
-        "signed": true,
-        "facts": {
-          "local-identifier": "SYNTHETIC-FARM-001"
-        },
-        "value": true
-      }
-    },
-    {
-      "id": "negative-missing-holding",
-      "declaredUnresolved": true,
-      "expected": {
-        "publicProblem": "evidence.unavailable",
-        "derivationRuns": false,
-        "signed": false,
-        "sourceRequestCount": 1
-      }
-    },
-    {
-      "id": "boundary-wrong-identity",
-      "response": {
-        "data": {
-          "domainData": {
-            "localIdentifier": "SYNTHETIC-WRONG"
-          }
-        }
-      },
-      "expected": {
-        "error": "source_protocol_error",
-        "publicProblem": "source.unavailable",
-        "derivationRuns": false,
-        "signed": false
-      }
-    },
-    {
-      "id": "missing-identity",
-      "response": {
-        "data": {
-          "domainData": {}
-        }
-      },
-      "expected": {
-        "error": "source_protocol_error",
-        "publicProblem": "source.unavailable",
-        "derivationRuns": false,
-        "signed": false
-      }
-    },
-    {
-      "id": "wrong-identity-type",
-      "response": {
-        "data": {
-          "domainData": {
-            "localIdentifier": 7
-          }
-        }
-      },
-      "expected": {
-        "error": "source_protocol_error",
-        "publicProblem": "source.unavailable",
-        "derivationRuns": false,
-        "signed": false
-      }
-    },
-    {
-      "id": "source-failure",
-      "sourceFailure": "timeout",
-      "expected": {
-        "publicProblem": "source.unavailable",
-        "signed": false
-      }
-    },
-    {
-      "id": "output-gate-refuses-protected-reference",
-      "derivationMutation": "return-raw-reference",
-      "expected": {
-        "outputGate": "rejected",
-        "signed": false
-      }
-    },
-    {
-      "id": "anti-reconstruction",
-      "bundleMutation": "duplicate-disclosure-family",
-      "expected": {
-        "bundle": "rejected"
-      }
-    }
-  ],
-  "privacyExpectation": {
-    "evidenceContains": [
-      "urn:example:concept:holding-registered:registered"
-    ],
-    "evidenceExcludes": [
-      "localIdentifier",
-      "SYNTHETIC-FARM-001",
-      "SYNTHETIC-WRONG",
-      "SYNTHETIC-PRIVATE-NAME",
-      "breg-8-registry-4-farm-19-by-local-identifier"
-    ],
-    "diagnosticsExclude": [
-      "SYNTHETIC-FARM-001",
-      "SYNTHETIC-WRONG",
-      "SYNTHETIC-PRIVATE-NAME"
-    ]
-  }
-}
+apiVersion: id.registrystack.org/formats/evidence/fixture/v1alpha1
+kind: EvidenceFixture
+syntheticOnly: true
+common:
+  observedAt: '2026-09-06T00:00:00Z'
+  selectors:
+    subject:
+      profile: breg-8-registry-4-farm-19-by-local-identifier
+      values:
+        local-identifier: SYNTHETIC-FARM-001
+  expectedRequestParts:
+    query:
+      - name: accessProfile
+        value: evidence-source
+      - name: $select
+        value: localIdentifier
+    body:
+      selector: by-local-identifier
+      values:
+        localIdentifier: SYNTHETIC-FARM-001
+  expectedTransport:
+    path: /v1/records/farms:lookup
+    fixedHeaders:
+      - name: Accept
+        value: application/json
+cases:
+  - id: positive
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 200
+            headers:
+              content-type: application/json
+            body:
+              data:
+                domainData:
+                  localIdentifier: SYNTHETIC-FARM-001
+                  name: SYNTHETIC-PRIVATE-NAME
+    expected:
+      lookup: match
+      derivationRuns: true
+      signed: true
+      facts:
+        local-identifier: SYNTHETIC-FARM-001
+      value: true
+  - id: no-match
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 404
+            headers:
+              content-type: application/problem+json
+            body:
+              type: https://id.registrystack.org/problems/registry-breg/lookup/unresolved
+              title: Not Found
+              status: 404
+              detail: The requested record was not found.
+              code: lookup.unresolved
+              traceId: '11111111111111111111111111111111'
+    expected:
+      lookup: unresolved
+      publicProblem: evidence.unavailable
+      derivationRuns: false
+      signed: false
+      sourceRequestCount: 1
+  - id: ambiguous-source-unresolved
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 404
+            headers:
+              content-type: application/problem+json
+            body:
+              type: https://id.registrystack.org/problems/registry-breg/lookup/unresolved
+              title: Not Found
+              status: 404
+              detail: The authoritative source did not release a unique record.
+              code: lookup.unresolved
+              traceId: '22222222222222222222222222222222'
+    expected:
+      lookup: unresolved
+      publicProblem: evidence.unavailable
+      derivationRuns: false
+      signed: false
+      sourceRequestCount: 1
+  - id: boundary-wrong-identity
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 200
+            headers:
+              content-type: application/json
+            body:
+              data:
+                domainData:
+                  localIdentifier: SYNTHETIC-WRONG
+    expected:
+      error: source_protocol_error
+      publicProblem: source.unavailable
+      derivationRuns: false
+      signed: false
+  - id: missing-identity
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 200
+            headers:
+              content-type: application/json
+            body:
+              data:
+                domainData: {}
+    expected:
+      error: source_protocol_error
+      publicProblem: source.unavailable
+      derivationRuns: false
+      signed: false
+  - id: wrong-identity-type
+    acquisition:
+      intercepts:
+        - type: endpoint
+          endpoint: registry
+        - type: token-endpoint
+          endpoint: registry
+      exchanges:
+        - request:
+            endpoint: registry
+            tokenRequest: true
+            method: POST
+            path: /oauth2/token
+          response:
+            status: 200
+            body:
+              access_token: synthetic-registry-replay-token
+              token_type: Bearer
+              expires_in: 60
+        - request:
+            endpoint: registry
+            method: POST
+            path: /v1/records/farms:lookup
+            query: '%24select=localIdentifier&accessProfile=evidence-source'
+            headers:
+              accept: application/json
+            body:
+              selector: by-local-identifier
+              values:
+                localIdentifier: SYNTHETIC-FARM-001
+          response:
+            status: 200
+            headers:
+              content-type: application/json
+            body:
+              data:
+                domainData:
+                  localIdentifier: 7
+    expected:
+      error: source_protocol_error
+      publicProblem: source.unavailable
+      derivationRuns: false
+      signed: false
+  - id: source-failure
+    sourceFailure: timeout
+    expected:
+      publicProblem: source.unavailable
+      signed: false
+  - id: negative-output-gate-refuses-protected-reference
+    derivationMutation: return-raw-reference
+    expected:
+      outputGate: rejected
+      signed: false
+  - id: anti-reconstruction
+    bundleMutation: duplicate-disclosure-family
+    expected:
+      bundle: rejected
+privacyExpectation:
+  evidenceContains:
+    - urn:example:concept:holding-registered:registered
+  evidenceExcludes:
+    - localIdentifier
+    - SYNTHETIC-FARM-001
+    - SYNTHETIC-WRONG
+    - SYNTHETIC-PRIVATE-NAME
+    - breg-8-registry-4-farm-19-by-local-identifier
+  diagnosticsExclude:
+    - SYNTHETIC-FARM-001
+    - SYNTHETIC-WRONG
+    - SYNTHETIC-PRIVATE-NAME

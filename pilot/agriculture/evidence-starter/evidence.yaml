@@ -1,0 +1,70 @@
+apiVersion: id.registrystack.org/formats/evidence/project/v1alpha1
+kind: EvidenceProject
+id: agriculture-holding-evidence
+selectorProfiles:
+  breg-8-registry-4-farm-19-by-local-identifier:
+    maximumAggregateBytes: 640
+    fields:
+      local-identifier:
+        type: string
+        minimumBytes: 1
+        maximumBytes: 640
+functions:
+- id: derive-holding-registered
+  interface: assertion-derive/v1
+  source: functions/derive-holding-registered.rhai
+sources:
+  holding-register:
+    pack:
+      id: holding-register
+      version: sha256:000b55a4f01df4d2f409d6e73fd0ed12bc7644829dd60cc0f1f7574988f23daf
+    route: lookup
+    connection: registry
+    inputs:
+      by-local-identifier--local-identifier:
+        selector:
+          role: subject
+          profile: breg-8-registry-4-farm-19-by-local-identifier
+          field: local-identifier
+    acquisitionPosture: field-projected
+assertionDefinitions:
+  holding-registered:
+    question: Is this agricultural holding registered?
+    semantics:
+      requirement: urn:example:requirement:holding-registered:v1
+      kind: criterion
+      evidenceType: urn:example:evidence:holding-registered
+      referenceFrameworks:
+      - urn:example:framework:holding-register:v1
+    purpose: holding-verification
+    grantCeiling:
+      authorities:
+      - organizational
+      actorKinds:
+      - service
+      valueOrigins:
+      - request
+      audiences:
+      - urn:example:audience:agriculture-pilot
+    subjects:
+    - role: subject
+      selectors:
+      - breg-8-registry-4-farm-19-by-local-identifier
+    acquisition:
+      source: holding-register
+    derive:
+      function: derive-holding-registered
+    outputs:
+      registered:
+        concept: urn:example:concept:holding-registered:registered
+        type: boolean
+    validitySeconds: 300
+    subjectBinding: audience-scoped
+    representations:
+    - signed-jws
+    observationTimezone: UTC
+    fixtures: fixtures/holding-registered.yaml
+    disclosureGuard:
+      families:
+      - urn:example:disclosure-family:holding-registered
+    existenceDisclosure: collapse-unresolved

@@ -12,7 +12,7 @@ as:
 
 ## Client packaging
 
-This package pins `@registrystack/client` to **0.38.0** and uses its `evidence`
+This package pins `@registrystack/client` to **0.45.0** and uses its `evidence`
 namespace. Supported native targets are macOS arm64, Linux amd64 glibc, and
 Linux arm64 glibc. Alpine/musl is unsupported. Use a glibc OpenFn worker image.
 
@@ -55,8 +55,8 @@ private-key-JWT client-credentials exchange, replace `token` with:
 Store private material in the OpenFn credential, never job source or state.data.
 The native SDK validates the key, performs the exchange, and owns token caching.
 Optional SDK timeout and private-CA fields pass through intact. The authored
-response bound is `maximumResponseBytes`; the adaptor maps it to the pinned 0.38
-client's internal `maxResponseBytes` field. The old camelCase spelling is
+response bound is `maximumResponseBytes`, which the native client takes as is. The old
+`maxResponseBytes` spelling is
 refused under `configuration.evidence` rather than silently ignored or treated
 as SDK-specific configuration.
 Exactly one token source is allowed. Existing flat credentials
@@ -90,7 +90,7 @@ execute(
       },
     ],
     expectedOutputs: [
-      { concept: "urn:example:concept:adult-status", form: "boolean" },
+      { concept: "urn:example:concept:adult-status", form: { type: "boolean" } },
     ],
     maximumAssertionLifetimeSeconds: 300,
     clockSkewSeconds: 30,
@@ -127,7 +127,7 @@ concept identifier.
 ## Progressive request and continuity receipts
 
 For the SDK's progressive API, mount a reviewed
-`registry.evidence-client-profile/v1` JSON profile into the worker and configure:
+``EvidenceClientProfile` (`id.registrystack.org/formats/evidence/client-profile/v1`) JSON profile into the worker and configure:
 
 ```json
 { "evidence": { "profilePath": "/run/evidence/client.json" } }

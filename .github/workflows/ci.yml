@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - name: Install the committed npm dependency graph
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Check all four 0.38 adaptors, event services and compiled jobs
+      - name: Check the 0.45 adaptors, event services and compiled jobs
         run: npm run check
       - name: Check adaptor package contents
         run: npm run pack:dry-run
@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Build pinned 0.38 images, execute the native worker gate and set up the isolated pilot
+      - name: Build pinned 0.45 images, execute the native worker gate and set up the isolated pilot
         # Setup owns the build and suppresses raw upstream subprocess output.
         run: ./deployment/pilot.sh setup
       - name: Check private mount ownership
@@ -55,16 +55,16 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          if [ -f pilot/agriculture/.runtime-0.38/prepared.json ]; then
+          if [ -f pilot/agriculture/.runtime-0.45/prepared.json ]; then
             ./deployment/pilot.sh status
           fi
       - name: Stop application services and retain isolated test data until runner disposal
         if: always()
         shell: bash
         run: |
-          if [ -f pilot/agriculture/.runtime-0.38/prepared.json ]; then
+          if [ -f pilot/agriculture/.runtime-0.45/prepared.json ]; then
             if ! ./deployment/pilot.sh stop >/dev/null 2>&1; then
-              echo 'Pilot stop did not complete. The isolated CI runner will be disposed.'
+              printf '%s\n' 'Pilot stop did not complete. The isolated CI runner will be disposed.'
             fi
           fi
           # Never upload runtime files, private keys, dataclips or raw service logs.

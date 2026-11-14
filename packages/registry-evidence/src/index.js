@@ -92,7 +92,7 @@ export function prepareEvidenceRequest(state, options = {}) {
         configuration.evidence !== undefined,
       ));
     const progressive = profileMode ? resolveInputValue(state, {
-      requirement: options.requirement,
+      handle: options.requirement,
       responseFormat: "signed-jws",
       ...(options.selectors === undefined ? {} : { selectors: options.selectors }),
       ...(options.subjects === undefined ? {} : { subjects: options.subjects }),
@@ -187,7 +187,7 @@ export function selectSupportedValue(assertion, concept) {
 }
 
 function failureResult(error) {
-  const status = error.kind === "not_available"
+  const status = error.kind === "not-available"
     ? 422
     : (Number.isSafeInteger(error.status) ? error.status : 0);
   const retryAfter = Number.isSafeInteger(error.retryAfterSeconds) && error.retryAfterSeconds > 0
@@ -199,7 +199,7 @@ function failureResult(error) {
   if (error.kind === "transport" || (error.kind === "token" && error.tokenKind === "transport")) {
     branch = "retryable_infrastructure";
     fallbackCode = "transport.error";
-  } else if (error.kind === "not_available") {
+  } else if (error.kind === "not-available") {
     branch = "evidence_not_available";
     fallbackCode = "evidence_not_available";
   } else if (error.kind === "token") {
@@ -214,13 +214,13 @@ function failureResult(error) {
   } else if (error.kind === "denied" && status === 429) {
     branch = "retryable_infrastructure";
     fallbackCode = "rate_limited";
-  } else if (error.kind === "protocol" && status === 400) {
+  } else if (error.kind === "invalid-request" || (error.kind === "protocol" && status === 400)) {
     branch = "invalid_request";
     fallbackCode = "malformed_request";
   } else if (error.kind === "protocol" && status === 406) {
     branch = "response_format_not_acceptable";
     fallbackCode = "response_format_not_acceptable";
-  } else if (error.kind === "protocol" && status >= 500) {
+  } else if (error.kind === "unavailable" || (error.kind === "protocol" && status >= 500)) {
     branch = "retryable_infrastructure";
     fallbackCode = "service_unavailable";
   }
@@ -306,7 +306,7 @@ function evidenceConfiguration(configuration) {
     token: { static: requireString(configuration.token, "configuration.token") },
   };
   copyOptionalConfiguration(configuration, config, "evidence_trusted_root_certificates", "trustedRootCertificates");
-  copyOptionalConfiguration(configuration, config, "evidence_max_response_bytes", "maxResponseBytes");
+  copyOptionalConfiguration(configuration, config, "evidence_max_response_bytes", "maximumResponseBytes");
   return config;
 }
 
@@ -316,14 +316,7 @@ function nativeEvidenceConfiguration(configuration, authoredNamespace) {
       code: "configuration.evidence.response_bound",
     });
   }
-  if (configuration.maximumResponseBytes === undefined) return configuration;
-  const nativeConfiguration = {
-    ...configuration,
-    // The pinned 0.38 client uses the shorter spelling internally.
-    maxResponseBytes: configuration.maximumResponseBytes,
-  };
-  delete nativeConfiguration.maximumResponseBytes;
-  return nativeConfiguration;
+  return configuration;
 }
 
 function parseConfigurationJson(value, label) {

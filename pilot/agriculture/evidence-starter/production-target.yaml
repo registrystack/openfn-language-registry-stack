@@ -1,0 +1,98 @@
+# The retained Transit public key is copied to public-keys before this target is
+# checked or packaged. No private signing key is generated or retained here.
+apiVersion: id.registrystack.org/formats/evidence/target/v1alpha1
+kind: EvidenceTarget
+id: production
+project: agriculture-holding-evidence
+package:
+  root: /config/evidence/package
+authority: production-authority.yaml
+service:
+  providerId: https://127.0.0.1:8445
+  issuer: urn:example:issuer:agriculture-holding-evidence
+  publicOrigin: https://127.0.0.1:8445
+  trustDomain: urn:example:trust:agriculture-pilot
+listener:
+  bind: 127.0.0.1:8080
+  tlsTermination: operator-controlled-upstream
+  trustProxyIdentityHeaders: false
+  maximumRequestBytes: 65536
+  maximumConcurrentRequests: 64
+  requestTimeoutMilliseconds: 10000
+  shutdownGraceMilliseconds: 30000
+authentication:
+  oidc:
+    issuer: https://127.0.0.1:8443
+    audience: urn:example:audience:agriculture-pilot
+    tokenTypes:
+    - at+jwt
+    algorithms:
+    - RS256
+    jwksSource:
+      type: uri
+      uri: https://127.0.0.1:8443/oauth2/jwks
+    tlsTrustProfile: pilot-ca
+    principalClaim: sub
+    requesterTagsClaim: evidence_tags
+    evidenceAudienceClaim: evidence_audience
+    requiredScopes:
+    - evidence:request
+    maximumTokenLifetimeSeconds: 300
+    revokedKeyIds: []
+connections:
+  registry:
+    allowedPrivateCidrs:
+    - 10.254.45.0/24
+    endpoints:
+      registry:
+        origin: https://issuer:8444
+        authentication:
+          type: oauth2-private-key-jwt
+          tokenEndpoint: https://issuer:8443/oauth2/token
+          clientIdRef: secret:file/registry-client-id
+          clientAssertionKeyRef: secret:file/registry-client-key
+          clientAssertionAudience: https://127.0.0.1:8443
+          resource: urn:example:audience:agriculture-pilot
+          scope: pilot:evidence-source
+          maximumCacheSeconds: 60
+        tlsTrustProfile: pilot-ca
+        attemptTimeoutMilliseconds: 5000
+        maximumResponseBytes: 65536
+secretProviders:
+  file:
+    root: /config/evidence/secrets
+signer:
+  type: transit
+  unixSocketPath: /run/registry-evidence/transit-proxy.sock
+  mount: transit
+  keyName: evidence-signing
+  keyVersion: 1
+  attemptTimeoutMilliseconds: 2000
+  algorithm: ES256
+  publicJwkFile: public-keys/evidence-signing.jwk.json
+subjectBinding:
+  secretRef: secret:file/subject-binding-hmac-key
+  keyVersion: 1
+audit:
+  path: /var/lib/registry-evidence/evidence.jsonl
+  hashKeyRef: secret:file/audit-hmac-key
+  hashKeyVersion: 1
+rateLimits:
+  requestsPerPrincipalPerMinute: 60
+  burstPerPrincipal: 16
+  failedSelectorAttemptsPerPrincipalAuthorityPerMinute: 10
+assuranceProfile: production
+publication:
+  serviceId: urn:example:service:agriculture-holding-evidence
+  title: Synthetic agricultural holding evidence
+  description: Minimum-disclosure synthetic holding registration evidence
+  endpointUrl: https://127.0.0.1:8445
+  jurisdictions:
+  - urn:example:jurisdiction:synthetic
+responseFormats:
+- signed-jws
+outboundTls:
+  systemRoots: true
+  trustProfiles:
+    pilot-ca:
+      caBundleFile: /config/evidence/tls/pilot-ca.pem

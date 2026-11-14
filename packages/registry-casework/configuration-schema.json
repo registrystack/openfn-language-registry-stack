@@ -54,7 +54,7 @@
       "maxLength": 128,
       "description": "Configured Casework Requester profile bound to this credential."
     },
-    "requestTimeoutMilliseconds": {
+    "attemptTimeoutMilliseconds": {
       "type": "integer",
       "minimum": 1
     },

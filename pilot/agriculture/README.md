@@ -2,16 +2,18 @@
 
 This project adapts the maintained Registry Stack agricultural-holdings core
 starter. It retains its Farm, holder, responsibility and reviewed name-correction
-model, including the original PublicSchema attribution. The old 0.27 runtime and databases are
-retained separately; the current pilot starts with fresh synthetic records. All supplied names,
+model, including the original PublicSchema attribution. The old 0.38 and 0.27
+runtimes and databases are retained separately; the current Registry Stack
+**0.45.0** pilot starts with fresh synthetic records. All supplied names,
 identifiers, inputs and identities are synthetic.
 
 The complete deployment and OpenFn workflows are described in the repository
-README. `prepare.py --bin-dir <Registry Stack 0.38.0 binaries>` creates an ignored,
-owner-only `.runtime-0.38` directory. It needs Python 3 with PyYAML and OpenSSL.
+README. `prepare.py --bin-dir <Registry Stack 0.45.0 binaries>` creates an ignored,
+owner-only `.runtime-0.45` directory. The old `.runtime-0.38` directory is retained
+and not reused, migrated, or removed. Preparation needs Python 3 with PyYAML and OpenSSL.
 Preparation generates fresh keys, fixed service bindings, separate database roles,
-a direct BREG source export and Evidence authoring inputs. It checks the authored
-BREG and Casework contracts and runs Evidence fixtures.
+and normalized Evidence authoring inputs. It checks the authored BREG contract
+and runs Evidence fixtures with a disposable signing key.
 The deployed Evidence package is compiled after the persistent Transit signer
 is initialized, with its exact public key and explicit native client configuration.
 It does not connect to a database or start services. Existing output is refused;
@@ -19,18 +21,23 @@ normal restart reuses it and retains records and credentials.
 
 `initialize.py` runs inside the deployment tools container after the pilot ThunderID
 and PostgreSQL are ready. It uses `bregctl test`, `package`, `apply --initial`, and
-`verify`. The schema test database is separate from the pilot record database.
+`verify`. It then pairs Casework with that sealed BREG package before Casework
+check, test, package, and apply. The schema test database is separate from the
+pilot record database.
 It never resets an existing database or clears a migration interlock. An
 interrupted activation needs the maintained BREG recovery procedure.
 
 ## Authority and disclosure
 
 - `openfn-service` creates farms, resolves their unique `localIdentifier`, and
-  creates/submits its own corrections. It has no review, application, direct farm
+  starts/submits its own correction Proposals. It has no review, application, direct farm
   patch, collection listing, or holder maintenance authority.
-- The separate `reviewer` principal can inspect, approve in Casework and explicitly apply a
-  proposed correction. `excludeInitiator: true` and manual application remain
-  authored Casework and BREG requirements. OpenFn receives no reviewer private key.
+- The separate `reviewer` principal can inspect and approve in Casework. The same
+  human uses the distinct BREG `correction-applier` profile to apply an approved
+  Proposal. OpenFn is a service and cannot use the Casework staff reviewer
+  profile; manual review and explicit application remain required. The pilot
+  does not identify a human behind the correction webhook, so it does not prove
+  human initiator exclusion. OpenFn receives no reviewer private key.
 - `evidence-source` can only perform an exact Farm lookup returning
   `localIdentifier`. It cannot read names, list records or write.
 - `holding-registered` signs one Boolean concept. It means a unique holding is
@@ -48,7 +55,7 @@ synthetic Farm identifier, so caller filters are never treated as authorization.
 
 ## Explicit reviewer steps
 
-Copy the correction request UUID from the registration/correction workflow result.
+Copy the Proposal UUID from the correction workflow result.
 Run these commands through the deployment's tools service, which has the private
 reviewer credential. `inspect` prints the synthetic before/after proposal and saves
 that exact response. An approval or application uses its advertised action,
@@ -57,14 +64,14 @@ digest and lifecycle ETag. Stale snapshots are refused.
 
 ```sh
 deployment/compose.sh run --rm tools \
-  python3 /opt/pilot/agriculture/review.py inspect REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py inspect PROPOSAL_UUID
 deployment/compose.sh run --rm tools \
-  python3 /opt/pilot/agriculture/review.py approve REQUEST_UUID
-# Approval leaves the authoritative Farm unchanged. Inspect the approved request.
+  python3 /opt/pilot/agriculture/review.py approve PROPOSAL_UUID
+# Approval leaves the authoritative Farm unchanged. Inspect the approved Proposal.
 deployment/compose.sh run --rm tools \
-  python3 /opt/pilot/agriculture/review.py inspect REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py inspect PROPOSAL_UUID
 deployment/compose.sh run --rm tools \
-  python3 /opt/pilot/agriculture/review.py apply REQUEST_UUID
+  python3 /opt/pilot/agriculture/review.py apply PROPOSAL_UUID
 ```
 
 The supplied `inputs/registration.json` and `inputs/correction.json` use stable
@@ -90,9 +97,8 @@ deployment/compose.sh run --rm --no-deps sdk-tools \
 
 The smoke uses `SYNTHETIC-DIRECT-SMOKE-001`, separate from the workflow input farm.
 It retains that synthetic record and privately stores reports and review snapshots
-under `.runtime-0.38/breg`. The Evidence check uses the released Node SDK with
+under `.runtime-0.45/breg`. The Evidence check uses the released Node SDK with
 pinned signing keys and the exact packaged verification policy. The local HTTPS
-endpoint uses explicit configuration because 0.38 progressive profiles refuse
-private HTTPS origins. Repeated smoke runs create fresh synthetic correction
-proposals. They do not reset a database. Its committed events can reach the pilot
+endpoint uses explicit trust configuration for the private pilot CA. Repeated
+smoke runs create fresh synthetic correction Proposals. They do not reset a database. Its committed events can reach the pilot
 workflow once the event bridge is enabled.

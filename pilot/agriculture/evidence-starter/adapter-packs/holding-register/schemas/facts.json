@@ -1,0 +1,14 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "local-identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "local-identifier"
+  ],
+  "type": "object"
+}

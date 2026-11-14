@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Check bind readability as the runtime UIDs without exposing file contents.
-set -eu
+set -euo pipefail
 cd "$(dirname "$0")/.."
-runtime_root="$(pwd)/pilot/agriculture/.runtime-0.38"
+runtime_root="$(pwd)/pilot/agriculture/.runtime-0.45"
 node_image='node:24.19.0-bookworm@sha256:4196d66a565c6f195728d9952f161f4adfe2ad753052a08b7ec7f1c5a6bda42b'
 check_tree() {
   service_name="$1"

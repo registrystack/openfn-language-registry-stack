@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createRequire } from "node:module";
+import { isDeepStrictEqual } from "node:util";
 export * from "@openfn/language-common";
 
 const require = createRequire(import.meta.url);
-const { BaseRegistryClient, BaseRegistryClientError } = require("./native.cjs");
+const { BaseRegistryClient, BaseRegistryClientError, copy } = require("./native.cjs");
 
 class OperationFailure extends Error {
   constructor(branch, code) {
@@ -20,9 +21,9 @@ export function discoverRegistry(options = {}) {
   ));
 }
 
-export function getEntitySchema(options = {}) {
+export function getRecordSchema(options = {}) {
   return operation(options, async (client, input) => document(
-    await client.entitySchema(required(input.entityIdentifier), input.accessProfile),
+    await client.recordSchema(required(input.recordTypeIdentifier), input.accessProfile),
   ));
 }
 
@@ -59,11 +60,6 @@ export function createRecord(options = {}) {
   });
 }
 
-/** Create a draft in the configured change-request entity. Submission is a separate lifecycle action. */
-export function createChangeRequest(options = {}) {
-  return createRecord(options);
-}
-
 export function patchRecord(options = {}) {
   return operation(options, async (client, input) => {
     const key = required(input.idempotencyKey);
@@ -77,34 +73,55 @@ export function patchRecord(options = {}) {
   });
 }
 
-/** Execute exactly one currently advertised action using a caller's held lifecycle precondition. */
-export function executeLifecycleAction(options = {}) {
+/** Start only an Action selected from current caller-filtered metadata. */
+export function startProposal(options = {}) {
   return operation(options, async (client, input) => {
-    const key = required(input.idempotencyKey);
-    const ifMatch = required(input.ifMatch);
+    const action = required(input.actionIdentifier);
     const profile = required(input.accessProfile);
-    const entity = required(input.entityIdentifier);
-    const route = required(input.route);
-    const recordIdentifier = required(input.recordIdentifier);
-    const requestedOperation = required(input.operation);
-    const metadata = await client.registryContract(profile);
-    const authority = metadata.selectLifecycle(entity, profile);
-    const record = await client.getRecord(route, recordIdentifier, { accessProfile: profile, format: input.format ?? "json" });
-    const actions = client.lifecycleActions(authority, record.value, input.format);
-    const selected = actions.filter((action) => action.operation === requestedOperation
-      && (action.stage ?? null) === (input.stage ?? null));
-    if (selected.length !== 1) throw new OperationFailure("denied", "action.unavailable");
-    const action = selected[0];
-    const advertised = record.value.data.request?.actions ?? [];
-    if (!advertised.some((item) => item.href === action.href && item.operation === action.operation
-      && (item.stage ?? null) === (action.stage ?? null) && item.ifMatch === ifMatch)) {
-      throw new OperationFailure("conflict", "action.precondition_changed");
-    }
-    return client.executeLifecycleAction(action, key);
-  });
+    const key = required(input.idempotencyKey);
+    const contract = await client.registryContract(profile);
+    return client.startProposal(contract.selectAction(action, profile), input.inputs, key);
+  }, proposalResult);
 }
 
-function operation(options, invoke) {
+/** Read a Proposal with the selected profile's current Get authority. */
+export function getProposal(options = {}) {
+  return operation(options, async (client, input) => {
+    const profile = required(input.accessProfile);
+    const identifier = required(input.proposalIdentifier);
+    const contract = await client.registryContract(profile);
+    return client.getProposal(contract.selectProposalGet(profile), identifier);
+  }, proposalResult);
+}
+
+/** Submit a matching Draft once; an observed terminal submission is an inert replay. */
+export function submitProposal(options = {}) {
+  return operation(options, async (client, input) => {
+    const profile = required(input.accessProfile);
+    const identifier = required(input.proposalIdentifier);
+    const key = required(input.idempotencyKey);
+    const expectedInputs = copy(input.expectedInputs);
+    if (!expectedInputs || typeof expectedInputs !== "object" || Array.isArray(expectedInputs)) {
+      throw new OperationFailure("invalid_request", "request.invalid");
+    }
+    const contract = await client.registryContract(profile);
+    const proposal = await client.getProposal(contract.selectProposalGet(profile), identifier);
+    const observed = proposalDocument(proposal);
+    if (!isDeepStrictEqual(observed.input, expectedInputs)) {
+      throw new OperationFailure("conflict", "proposal.input_mismatch");
+    }
+    if (observed.state === "draft") {
+      const attempt = client.prepareProposal(proposal, "submit", {}, key);
+      return { branch: "succeeded", value: proposalValue(await client.executeProposal(attempt)) };
+    }
+    if (["submitted", "applied", "rejected"].includes(observed.state)) {
+      return { branch: "already_submitted", value: proposalValue(proposal) };
+    }
+    throw new OperationFailure("conflict", "proposal.unavailable");
+  }, outcome => outcome);
+}
+
+function operation(options, invoke, normalize = completeResult) {
   return async (state) => {
     let input;
     let result;
@@ -119,7 +136,7 @@ function operation(options, invoke) {
       const configuration = state.configuration?.breg ?? state.configuration;
       const client = new BaseRegistryClient(configuration);
       const outcome = await invoke(client, input);
-      result = { branch: "succeeded", ...pick(outcome, ["value", "etag", "location", "continuation", "traceId"]) };
+      result = normalize(outcome);
     } catch (error) {
       result = failure(error);
     }
@@ -127,6 +144,24 @@ function operation(options, invoke) {
     // OpenFn owns final credential removal. Removing configuration here breaks execute/each composition.
     return { ...state, data: { ...state.data, [as]: result } };
   };
+}
+
+function completeResult(outcome) {
+  return { branch: "succeeded", ...pick(outcome, ["value", "etag", "location", "continuation", "traceId"]) };
+}
+
+function proposalDocument(proposal) {
+  try { return JSON.parse(proposal.documentJson); }
+  catch { throw new OperationFailure("protocol_failed", "response.invalid_json"); }
+}
+
+function proposalValue(proposal) {
+  return pick(proposalDocument(proposal), ["id", "actionId", "state", "input", "submissionVersion",
+    "revision", "effectDigest", "turn", "decision", "handoffRefusal", "applicationStatus"]);
+}
+
+function proposalResult(proposal) {
+  return { branch: "succeeded", value: proposalValue(proposal) };
 }
 
 function failure(error) {
@@ -138,20 +173,20 @@ function failure(error) {
   }
   const status = Number.isSafeInteger(error.status) ? error.status : 0;
   let branch = "failed";
-  if (error.kind === "configuration" || error.kind === "invalid_request"
+  if (error.kind === "configuration" || error.kind === "invalid-request"
     || (error.kind === "problem" && status === 400)) branch = "invalid_request";
   else if (error.kind === "transport" || (error.kind === "token" && error.tokenKind === "transport")
     || (error.kind === "problem" && (status === 429 || status >= 500))) branch = "retryable_infrastructure";
   else if (error.kind === "token" || status === 401) branch = "auth_failed";
-  else if (status === 403 || error.kind === "metadata_selection") branch = "denied";
-  else if (status === 404 || error.kind === "not_found") branch = "not_found";
+  else if (status === 403 || error.kind === "metadata-selection") branch = "denied";
+  else if (status === 404 || error.kind === "not-found") branch = "not_found";
   else if (status === 409 || status === 412) branch = "conflict";
   else if (error.kind === "protocol") branch = "protocol_failed";
   return {
     branch,
     problem: { code: `breg.${error.kind}`, status, retryable: branch === "retryable_infrastructure" },
     // Only typed diagnostics, never the SDK error message, response body, or caller inputs.
-    ...pick(error, ["code", "planRefusal", "traceId", "transportKind", "tokenKind"]),
+    ...pick(error, ["code", "refusalCode", "reasonCode", "traceId", "transportKind", "tokenKind"]),
   };
 }
 

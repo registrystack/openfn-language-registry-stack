@@ -138,8 +138,8 @@
       "steps": [
         {
           "id": "draft",
-          "operation": "create",
-          "entity": "name-correction",
+          "operation": "start-proposal",
+          "action": "correct-farm-name",
           "client": "editor",
           "accessProfile": "editor",
           "input": "change",
@@ -147,27 +147,27 @@
         },
         {
           "id": "submit",
-          "operation": "submit",
-          "entity": "name-correction",
+          "operation": "submit-proposal",
+          "action": "correct-farm-name",
           "client": "editor",
           "accessProfile": "editor",
-          "record": "request"
+          "proposal": "request"
         },
         {
           "id": "inspect",
-          "operation": "get",
-          "entity": "name-correction",
+          "operation": "get-proposal",
+          "action": "correct-farm-name",
           "client": "reviewer",
           "accessProfile": "reviewer",
-          "record": "request"
+          "proposal": "request"
         },
         {
           "id": "apply",
-          "operation": "apply",
-          "entity": "name-correction",
+          "operation": "apply-proposal",
+          "action": "correct-farm-name",
           "client": "reviewer",
-          "accessProfile": "reviewer",
-          "record": "request"
+          "accessProfile": "correction-applier",
+          "proposal": "request"
         },
         {
           "id": "history",

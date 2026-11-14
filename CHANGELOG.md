@@ -8,29 +8,43 @@
   Its existing `0.0.0.0` default remains unchanged.
 - `@openfn/language-registry-casework` wraps the native Casework client for
   requester review requests and results, source inboxes and task grants.
-- `@openfn/language-registry-relay` provides governed V2 record reads, lookups,
-  pagination, metadata and SDMX aggregate queries through the native client.
+- The BREG adaptor selects native Actions and Proposal Get authority for
+  `startProposal`, `getProposal`, and replay-safe `submitProposal` operations.
+- The generated pilot restores a correction workflow using native Proposals,
+  Casework review, and a separate manual Apply step.
 
 ### Changed
 
-- The Evidence, BREG, Casework and Relay V2 adaptors pin the published
-  `@registrystack/client` 0.38.0. Relay uses governed V2 resources and native
-  continuations; Casework uses current review-request bindings and results.
-- The container pilot uses matching Registry Stack 0.38 clients, tools and
-  packages, ThunderID identity, Casework correction review, and explicit BREG
-  application. Evidence uses persistent OpenBao Transit signing and local TLS
-  origins. Its new configuration and volumes are separate from the retained
-  0.27 data.
+- The Evidence, BREG and Casework adaptors pin the published
+  `@registrystack/client` 0.45.0. Configuration uses `attemptTimeoutMilliseconds`
+  and `maximumResponseBytes`; the client's error kinds are kebab-case, and the
+  adaptors' safe validation reasons follow them.
+- Casework uses the review task routes: `listCaseworkReviewTasks`,
+  `getCaseworkReviewTask`, `previewCaseworkTaskTemplates`,
+  `listCaseworkTaskGrants`, `approveCaseworkTaskGrant`,
+  `revokeCaseworkTaskGrant` and `caseworkTaskGrantStatus`. Inputs name a
+  `taskId` instead of an `itemId`.
+- BREG reads record types (`recordTypes`, `recordTypeIdentifier`); `getEntitySchema`
+  is now `getRecordSchema` and takes `recordTypeIdentifier`. Failures report
+  `refusalCode` and `reasonCode` in place of `planRefusal`.
+- Evidence profile files use the `EvidenceClientProfile` envelope, expected
+  output forms are mappings such as `{ type: "boolean" }`, and the progressive
+  request names its requirement as `handle`.
 - The event bridge's explicit `hook-envelope-v1` mode validates canonical
-  0.38 events and returns the native notification acknowledgement after
-  durable OpenFn acceptance. The legacy body mode remains available.
+  0.45 events with `recordType` and returns the native notification acknowledgement
+  after durable OpenFn acceptance. Legacy `entity` projections remain accepted.
+- The container pilot pins Registry Stack 0.45.0 runtimes and tools in a fresh
+  isolated project, while leaving the previous 0.38 pilot untouched.
 
 ### Removed
 
-- Removed the Relay v1 adaptor (`@openfn/language-registry-relay`), its
-  credential schema, example job, tests and workspace dependencies. Workflows
-  using that local adaptor must be updated before upgrading. The replacement
-  native Relay V2 adaptor uses different configuration, options and result shapes.
+- Removed the Relay adaptor (`@openfn/language-registry-relay`): the 0.45 client
+  has no Relay namespace.
+- Removed the Casework adaptor operations `listCaseworkWorkItems` and
+  `getCaseworkWorkItem`; the review task operations replace them.
+- Removed the BREG operations `createChangeRequest` and `executeLifecycleAction`,
+  and the `jobs/create-and-submit.js` example. The 0.45 client replaces the
+  change-request lifecycle with metadata-declared Actions and Proposals.
 
 ## 0.1.0 Beta
 

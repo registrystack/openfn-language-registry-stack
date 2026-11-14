@@ -1,7 +1,7 @@
 # Registry Casework Requester adaptor
 
 This OpenFn adaptor wraps the Requester review API in the published
-Registry Stack Node client 0.38.0. It creates or recovers review requests,
+Registry Stack Node client 0.45.0. It creates or recovers review requests,
 reads request state and correlated results, adds requester-visible notes, pages
 requester-visible history and result feeds, and cancels an accepted request.
 It also preserves the maintained source-inbox and task-grant inspection surface
@@ -31,12 +31,11 @@ For a refreshing service credential, replace `token` with
 scopes } }`. Configure exactly one credential source. The adaptor validates the
 operation before asking the native provider for a token.
 
-`requestTimeoutMilliseconds`, `connectTimeoutMilliseconds`,
+`attemptTimeoutMilliseconds`, `connectTimeoutMilliseconds`,
 `maximumResponseBytes`, `userAgent`, and `trustedRootCertificates` pass to the
 maintained client. Put Casework settings under `configuration.casework`; unknown
 fields in that namespace fail before client construction. Other configuration
-namespaces remain available to other adaptors. The 0.38 client uses the shorter
-`maxResponseBytes` spelling internally, which this adaptor maps at its boundary.
+namespaces remain available to other adaptors.
 The token and profile never enter operation output. OpenFn
 keeps configuration available during a composed job and removes it from final
 job output.
@@ -62,14 +61,17 @@ Create and cancel each make one maintained-client call. The adaptor never
 generates an idempotency key, retries a mutation, replaces a digest, or rebuilds
 an accepted binding.
 
-## Source inbox and task-grant operations
+## Review task and task-grant operations
 
-- `listCaseworkWorkItems` requires `sourceProfile` and an exact native `query`.
-- `getCaseworkWorkItem`, `previewCaseworkTaskTemplates`, and
-  `listCaseworkTaskGrants` require `sourceProfile` and `itemId`.
+- `listCaseworkReviewTasks` takes an optional exact native staffing `query` and
+  an optional `sourceProfile`.
+- `getCaseworkReviewTask`, `previewCaseworkTaskTemplates`, and
+  `listCaseworkTaskGrants` require `taskId` and accept an optional
+  `sourceProfile`.
 - `approveCaseworkTaskGrant` also requires the held `expectedRevision`, a
   caller-owned `idempotencyKey`, `templateId`, and `templateVersion`.
-- `revokeCaseworkTaskGrant` requires `sourceProfile`, `itemId`, and `grantId`.
+- `revokeCaseworkTaskGrant` requires `taskId` and `grantId`; the native client
+  rejects a source profile on revoke.
 - `caseworkTaskGrantStatus` requires `grantId`.
 
 The adaptor passes source authority, revisions, and keys to the native client
@@ -83,11 +85,11 @@ credentials, configuration, and caller inputs are not copied into the result.
 
 ## Request body
 
-The create request follows the native 0.38.0 contract. For submitted context:
+The create request follows the native 0.45.0 contract. For submitted context:
 
 ```json
 {
-  "kind": "decision",
+  "policy": { "id": "batch-validation" },
   "subject": {
     "source": "payments",
     "type": "batch",
@@ -97,11 +99,12 @@ The create request follows the native 0.38.0 contract. For submitted context:
   },
   "requesterReference": "batch-0042",
   "context": {
-    "strategy": "submitted",
+    "mode": "submitted",
     "snapshot": {
       "summary": "Review batch 42"
     }
-  }
+  },
+  "resultConstraints": { "acceptedCount": { "minimum": 0 } }
 }
 ```
 
@@ -137,7 +140,7 @@ execute(
 
 ## Verification
 
-The package check exercises fake bindings and the installed 0.38.0 native
+The package check exercises fake bindings and the installed 0.45.0 native
 client against a loopback HTTP service:
 
 ```sh

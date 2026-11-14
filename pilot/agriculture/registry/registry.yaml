@@ -4,22 +4,18 @@
 # the reasoning behind these choices. canonicalBaseIri below is a
 # reserved example.org name standing in for your registry's real
 # identity; replace it before you build a production package.
-apiVersion: registry.registrystack.org/v1alpha1
-kind: RegistryProject
-registry:
-  id: agricultural-holdings
-  canonicalBaseIri: https://agricultural-holdings.example.org
-  version: 0.1.0
-  defaultLanguage: en
+apiVersion: id.registrystack.org/formats/breg/project/v1alpha1
+kind: BRegProject
 package:
-  sourceRevision: agriculture-openfn-pilot-0.38.0
+  sourceRevision: agriculture-openfn-pilot-0.45.0
 manifestProjection:
   accessProfile: editor
   classificationCeiling: restricted
   catalog:
     baseUrl: https://agricultural-holdings.example.org
     title: Agricultural holding register
-    description: Maintain agricultural production units and separately asserted holder responsibilities.
+    description: Maintain agricultural production units and separately asserted holder
+      responsibilities.
     publisher:
       id: synthetic-custodian
       name: Synthetic example custodian
@@ -27,721 +23,775 @@ manifestProjection:
     id: directory-service
     title: Agricultural holding register
   datasets:
-    - id: directory
-      title: Agricultural holding register
-      description: Maintain agricultural production units and separately asserted holder responsibilities.
-      owner: Synthetic example custodian
-      status: active
+  - id: directory
+    title: Agricultural holding register
+    description: Maintain agricultural production units and separately asserted holder
+      responsibilities.
+    owner: Synthetic example custodian
+    status: active
   dataServices:
-    - id: directory-api
-      title: Agricultural holding register
-      endpointUrl: https://agricultural-holdings.example.org
-      servesDatasets:
-        - directory
+  - id: directory-api
+    title: Agricultural holding register
+    endpointUrl: https://agricultural-holdings.example.org
+    servesDatasets:
+    - directory
   distributions: []
   entities:
-    - id: farm
-      title: Farm
-      conceptUri: https://publicschema.org/agri/Farm
-      identifiers:
-        - field: local-identifier
-          kind: local
-      fields:
-        - id: name
-          concepts:
-            - https://publicschema.org/name
-    - id: person
-      title: Person
-      conceptUri: https://publicschema.org/Person
-      identifiers:
-        - field: local-identifier
-          kind: local
-      fields:
-        - id: name
-          concepts:
-            - https://publicschema.org/name
-    - id: organization
-      title: Organization
-      conceptUri: https://publicschema.org/Organization
-      identifiers:
-        - field: local-identifier
-          kind: local
-      fields:
-        - id: name
-          concepts:
-            - https://publicschema.org/name
-    - id: informal-group
-      title: Informal Group
-      conceptUri: https://publicschema.org/InformalGroup
-      identifiers:
-        - field: local-identifier
-          kind: local
-      fields:
-        - id: name
-          concepts:
-            - https://publicschema.org/name
-    - id: person-agricultural-holder-role
-      title: Person Agricultural Holder Role
-      conceptUri: https://publicschema.org/agri/PersonAgriculturalHolderRole
-      identifiers: []
-      fields:
-        - id: holder-farm
-          relationshipRole: holder-farm
-          relationshipConceptUri: https://publicschema.org/agri/holder_farm
-        - id: holder-person
-          relationshipRole: holder-person
-          relationshipConceptUri: https://publicschema.org/agri/holder_person
-        - id: start-date
-          concepts:
-            - https://publicschema.org/start_date
-        - id: end-date
-          concepts:
-            - https://publicschema.org/end_date
-    - id: organization-agricultural-holder-role
-      title: Organization Agricultural Holder Role
-      conceptUri: https://publicschema.org/agri/OrganizationAgriculturalHolderRole
-      identifiers: []
-      fields:
-        - id: holder-farm
-          relationshipRole: holder-farm
-          relationshipConceptUri: https://publicschema.org/agri/holder_farm
-        - id: holder-organization
-          relationshipRole: holder-organization
-          relationshipConceptUri: https://publicschema.org/agri/holder_organization
-        - id: start-date
-          concepts:
-            - https://publicschema.org/start_date
-        - id: end-date
-          concepts:
-            - https://publicschema.org/end_date
-    - id: group-agricultural-holder-role
-      title: Group Agricultural Holder Role
-      conceptUri: https://publicschema.org/agri/GroupAgriculturalHolderRole
-      identifiers: []
-      fields:
-        - id: holder-farm
-          relationshipRole: holder-farm
-          relationshipConceptUri: https://publicschema.org/agri/holder_farm
-        - id: holder-group
-          relationshipRole: holder-group
-          relationshipConceptUri: https://publicschema.org/agri/holder_group
-        - id: start-date
-          concepts:
-            - https://publicschema.org/start_date
-        - id: end-date
-          concepts:
-            - https://publicschema.org/end_date
-entities:
   - id: farm
-    primaryDataset: directory
-    route: farms
-    mutationMode: mutable
-    classification: restricted
+    title: Farm
+    conceptUri: https://publicschema.org/agri/Farm
+    identifiers:
+    - field: local-identifier
+      kind: local
     fields:
-      - id: local-identifier
-        type: string
-        required: true
-        classification: restricted
-        apiName: localIdentifier
-        maxLength: 160
-        minLength: 1
-      - id: name
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 160
-        minLength: 1
-    changeControl:
-      requiredFor:
-        - patch
-    constraints:
-      - kind: unique
-        fields:
-          - local-identifier
-    selectorProfiles:
-      - id: by-local-identifier
-        fields:
-          - local-identifier
-    hooks:
-      - id: farm-created-v1
-        phase: after
-        trigger: created
-        projection:
-          - local-identifier
-        handler:
-          kind: url
-          destinationId: openfn
-      - id: farm-patched-v1
-        phase: after
-        trigger: patched
-        projection:
-          - local-identifier
-        handler:
-          kind: url
-          destinationId: openfn
+    - id: name
+      concepts:
+      - https://publicschema.org/name
   - id: person
-    primaryDataset: directory
-    route: persons
-    mutationMode: mutable
-    classification: restricted
+    title: Person
+    conceptUri: https://publicschema.org/Person
+    identifiers:
+    - field: local-identifier
+      kind: local
     fields:
-      - id: local-identifier
-        type: string
-        required: true
-        classification: restricted
-        apiName: localIdentifier
-        maxLength: 160
-        minLength: 1
-      - id: name
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 160
-        minLength: 1
-    constraints:
-      - kind: unique
-        fields:
-          - local-identifier
+    - id: name
+      concepts:
+      - https://publicschema.org/name
   - id: organization
-    primaryDataset: directory
-    route: organizations
-    mutationMode: mutable
-    classification: restricted
+    title: Organization
+    conceptUri: https://publicschema.org/Organization
+    identifiers:
+    - field: local-identifier
+      kind: local
     fields:
-      - id: local-identifier
-        type: string
-        required: true
-        classification: restricted
-        apiName: localIdentifier
-        maxLength: 160
-        minLength: 1
-      - id: name
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 160
-        minLength: 1
-    constraints:
-      - kind: unique
-        fields:
-          - local-identifier
+    - id: name
+      concepts:
+      - https://publicschema.org/name
   - id: informal-group
-    primaryDataset: directory
-    route: informal-groups
-    mutationMode: mutable
-    classification: restricted
+    title: Informal Group
+    conceptUri: https://publicschema.org/InformalGroup
+    identifiers:
+    - field: local-identifier
+      kind: local
     fields:
-      - id: local-identifier
-        type: string
-        required: true
-        classification: restricted
-        apiName: localIdentifier
-        maxLength: 160
-        minLength: 1
-      - id: name
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 160
-        minLength: 1
-    constraints:
-      - kind: unique
-        fields:
-          - local-identifier
+    - id: name
+      concepts:
+      - https://publicschema.org/name
   - id: person-agricultural-holder-role
-    primaryDataset: directory
-    route: person-agricultural-holder-roles
-    mutationMode: mutable
-    classification: restricted
+    title: Person Agricultural Holder Role
+    conceptUri: https://publicschema.org/agri/PersonAgriculturalHolderRole
+    identifiers: []
     fields:
-      - id: holder-farm
-        type: reference
-        required: true
-        classification: restricted
-        target: farm
-        apiName: holderFarm
-      - id: holder-person
-        type: reference
-        required: true
-        classification: restricted
-        target: person
-        apiName: holderPerson
-      - id: start-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: startDate
-      - id: end-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: endDate
-    constraints:
-      - kind: compare
-        left: start-date
-        operator: less_than_or_equal
-        right: end-date
+    - id: holder-farm
+      relationshipRole: holder-farm
+      relationshipConceptUri: https://publicschema.org/agri/holder_farm
+    - id: holder-person
+      relationshipRole: holder-person
+      relationshipConceptUri: https://publicschema.org/agri/holder_person
+    - id: start-date
+      concepts:
+      - https://publicschema.org/start_date
+    - id: end-date
+      concepts:
+      - https://publicschema.org/end_date
   - id: organization-agricultural-holder-role
-    primaryDataset: directory
-    route: organization-agricultural-holder-roles
-    mutationMode: mutable
-    classification: restricted
+    title: Organization Agricultural Holder Role
+    conceptUri: https://publicschema.org/agri/OrganizationAgriculturalHolderRole
+    identifiers: []
     fields:
-      - id: holder-farm
-        type: reference
-        required: true
-        classification: restricted
-        target: farm
-        apiName: holderFarm
-      - id: holder-organization
-        type: reference
-        required: true
-        classification: restricted
-        target: organization
-        apiName: holderOrganization
-      - id: start-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: startDate
-      - id: end-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: endDate
-    constraints:
-      - kind: compare
-        left: start-date
-        operator: less_than_or_equal
-        right: end-date
+    - id: holder-farm
+      relationshipRole: holder-farm
+      relationshipConceptUri: https://publicschema.org/agri/holder_farm
+    - id: holder-organization
+      relationshipRole: holder-organization
+      relationshipConceptUri: https://publicschema.org/agri/holder_organization
+    - id: start-date
+      concepts:
+      - https://publicschema.org/start_date
+    - id: end-date
+      concepts:
+      - https://publicschema.org/end_date
   - id: group-agricultural-holder-role
-    primaryDataset: directory
-    route: group-agricultural-holder-roles
-    mutationMode: mutable
-    classification: restricted
+    title: Group Agricultural Holder Role
+    conceptUri: https://publicschema.org/agri/GroupAgriculturalHolderRole
+    identifiers: []
     fields:
-      - id: holder-farm
-        type: reference
-        required: true
-        classification: restricted
-        target: farm
-        apiName: holderFarm
-      - id: holder-group
-        type: reference
-        required: true
-        classification: restricted
-        target: informal-group
-        apiName: holderGroup
-      - id: start-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: startDate
-      - id: end-date
-        type: date
-        required: false
-        classification: restricted
-        apiName: endDate
-    constraints:
-      - kind: compare
-        left: start-date
-        operator: less_than_or_equal
-        right: end-date
-  - id: name-correction
-    primaryDataset: directory
-    route: name-corrections
-    mutationMode: mutable
+    - id: holder-farm
+      relationshipRole: holder-farm
+      relationshipConceptUri: https://publicschema.org/agri/holder_farm
+    - id: holder-group
+      relationshipRole: holder-group
+      relationshipConceptUri: https://publicschema.org/agri/holder_group
+    - id: start-date
+      concepts:
+      - https://publicschema.org/start_date
+    - id: end-date
+      concepts:
+      - https://publicschema.org/end_date
+accessProfiles:
+- id: reader
+  default: false
+  principalClaim: registry_principal
+  requiredScopes:
+  - starter:reader
+  requiredPurposes:
+  - starter-learning
+  permissions:
+    records:
+    - operations:
+      - get
+      - list
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      recordType: farm
+- id: editor
+  default: true
+  principalClaim: registry_principal
+  requiredScopes:
+  - starter:editor
+  requiredPurposes:
+  - starter-learning
+  permissions:
+    records:
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      writableFields:
+      - local-identifier
+      - name
+      recordType: farm
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      writableFields:
+      - local-identifier
+      - name
+      recordType: person
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      writableFields:
+      - local-identifier
+      - name
+      recordType: organization
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      writableFields:
+      - local-identifier
+      - name
+      recordType: informal-group
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - holder-farm
+      - holder-person
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      writableFields:
+      - holder-farm
+      - holder-person
+      - start-date
+      - end-date
+      recordType: person-agricultural-holder-role
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - holder-farm
+      - holder-organization
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      writableFields:
+      - holder-farm
+      - holder-organization
+      - start-date
+      - end-date
+      recordType: organization-agricultural-holder-role
+    - operations:
+      - get
+      - list
+      - revisions
+      - create
+      - patch
+      readableFields:
+      - holder-farm
+      - holder-group
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      writableFields:
+      - holder-farm
+      - holder-group
+      - start-date
+      - end-date
+      recordType: group-agricultural-holder-role
+    actions:
+    - action: correct-farm-name
+      operations:
+      - start
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+    proposals:
+    - action: correct-farm-name
+      operations:
+      - get
+      - edit
+      - submit
+      - revise
+      - cancel
+      readableInputs:
+      - record
+      - name
+      - reason
+      - supporting-reference
+      ownership: caller
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+  actorKind: human
+  requesterClients:
+  - editor
+- id: reviewer
+  default: false
+  principalClaim: registry_principal
+  requiredScopes:
+  - starter:reviewer
+  requiredPurposes:
+  - starter-learning
+  permissions:
+    records:
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      recordType: farm
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      recordType: person
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      recordType: organization
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      recordType: informal-group
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - holder-farm
+      - holder-person
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      recordType: person-agricultural-holder-role
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - holder-farm
+      - holder-organization
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      recordType: organization-agricultural-holder-role
+    - operations:
+      - get
+      - list
+      - revisions
+      readableFields:
+      - holder-farm
+      - holder-group
+      - start-date
+      - end-date
+      rowBoundaries: unrestricted
+      recordType: group-agricultural-holder-role
+    proposals:
+    - action: correct-farm-name
+      operations:
+      - get
+      - get-review-context
+      readableInputs:
+      - record
+      - name
+      - reason
+      - supporting-reference
+      readableContextFields:
+      - farmId
+      - currentName
+      - changes
+      - reason
+      - supportingReference
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+  actorKind: human
+  requesterClients:
+  - reviewer
+- id: openfn-service
+  default: false
+  principalClaim: registry_principal
+  requiredScopes:
+  - pilot:submit
+  requiredPurposes:
+  - agriculture-registration
+  permissions:
+    records:
+    - operations:
+      - get
+      - create
+      - lookup
+      readableFields:
+      - local-identifier
+      - name
+      rowBoundaries: unrestricted
+      writableFields:
+      - local-identifier
+      - name
+      lookups:
+      - selector: by-local-identifier
+        valueOrigin: request
+      recordType: farm
+    actions:
+    - action: correct-farm-name
+      operations:
+      - start
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+    proposals:
+    - action: correct-farm-name
+      operations:
+      - get
+      - edit
+      - submit
+      - revise
+      - cancel
+      readableInputs:
+      - record
+      - name
+      - reason
+      - supporting-reference
+      ownership: caller
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+  actorKind: service
+  requesterClients:
+  - openfn-service
+- id: evidence-source
+  default: false
+  principalClaim: registry_principal
+  requiredScopes:
+  - pilot:evidence-source
+  requiredPurposes:
+  - evidence-source-read
+  permissions:
+    records:
+    - operations:
+      - lookup
+      readableFields:
+      - local-identifier
+      rowBoundaries: unrestricted
+      lookups:
+      - selector: by-local-identifier
+        valueOrigin: request
+      recordType: farm
+- id: casework-reader
+  default: false
+  actorKind: service
+  principalClaim: registry_principal
+  requiredScopes:
+  - casework:source-reader
+  requiredPurposes:
+  - casework-sync
+  requesterClients:
+  - casework-reader
+  permissions:
+    proposals:
+    - action: correct-farm-name
+      operations:
+      - get-review-status
+      reviewAuthority: casework
+- id: correction-applier
+  default: false
+  actorKind: human
+  principalClaim: registry_principal
+  requiredScopes:
+  - starter:reviewer
+  requiredPurposes:
+  - starter-learning
+  requesterClients:
+  - reviewer
+  permissions:
+    proposals:
+    - action: correct-farm-name
+      operations:
+      - get
+      - apply
+      targets:
+      - recordType: farm
+        rowBoundaries: unrestricted
+project:
+  id: agricultural-holdings
+  canonicalBaseIri: https://agricultural-holdings.example.org
+  version: 0.1.0
+  defaultLanguage: en
+datasets:
+- id: directory
+recordTypes:
+- id: farm
+  primaryDataset: directory
+  route: farms
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: local-identifier
+    type: string
+    required: true
     classification: restricted
+    apiName: localIdentifier
+    minimumLength: 1
+    maximumLength: 160
+  - id: name
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 160
+  constraints:
+  - fields:
+    - local-identifier
+    type: unique
+  selectorProfiles:
+  - id: by-local-identifier
     fields:
-      - id: record
-        type: reference
-        required: true
-        classification: restricted
-        target: farm
-      - id: name
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 160
-        minLength: 1
-      - id: reason
-        type: string
-        required: true
-        classification: restricted
-        maxLength: 500
-        minLength: 1
-      - id: supporting-reference
-        type: string
-        required: true
-        classification: restricted
-        apiName: supportingReference
-        maxLength: 500
-        minLength: 1
-    changeRequest:
-      effects:
-        - target:
-            fromField: record
-          operation: patch
-          set:
-            name:
-              fromField: name
+    - local-identifier
+  hooks:
+  - id: farm-created-v1
+    phase: after
+    trigger: created
+    projection:
+    - local-identifier
+    handler:
+      destinationId: openfn
+      type: url
+  - id: farm-patched-v1
+    phase: after
+    trigger: patched
+    projection:
+    - local-identifier
+    handler:
+      destinationId: openfn
+      type: url
+  mutationPolicy:
+    patch: proposal-required
+- id: person
+  primaryDataset: directory
+  route: persons
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: local-identifier
+    type: string
+    required: true
+    classification: restricted
+    apiName: localIdentifier
+    minimumLength: 1
+    maximumLength: 160
+  - id: name
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 160
+  constraints:
+  - fields:
+    - local-identifier
+    type: unique
+- id: organization
+  primaryDataset: directory
+  route: organizations
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: local-identifier
+    type: string
+    required: true
+    classification: restricted
+    apiName: localIdentifier
+    minimumLength: 1
+    maximumLength: 160
+  - id: name
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 160
+  constraints:
+  - fields:
+    - local-identifier
+    type: unique
+- id: informal-group
+  primaryDataset: directory
+  route: informal-groups
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: local-identifier
+    type: string
+    required: true
+    classification: restricted
+    apiName: localIdentifier
+    minimumLength: 1
+    maximumLength: 160
+  - id: name
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 160
+  constraints:
+  - fields:
+    - local-identifier
+    type: unique
+- id: person-agricultural-holder-role
+  primaryDataset: directory
+  route: person-agricultural-holder-roles
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: holder-farm
+    type: reference
+    required: true
+    classification: restricted
+    target: farm
+    apiName: holderFarm
+  - id: holder-person
+    type: reference
+    required: true
+    classification: restricted
+    target: person
+    apiName: holderPerson
+  - id: start-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: startDate
+  - id: end-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: endDate
+  constraints:
+  - left: start-date
+    operator: less-than-or-equal
+    right: end-date
+    type: compare
+- id: organization-agricultural-holder-role
+  primaryDataset: directory
+  route: organization-agricultural-holder-roles
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: holder-farm
+    type: reference
+    required: true
+    classification: restricted
+    target: farm
+    apiName: holderFarm
+  - id: holder-organization
+    type: reference
+    required: true
+    classification: restricted
+    target: organization
+    apiName: holderOrganization
+  - id: start-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: startDate
+  - id: end-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: endDate
+  constraints:
+  - left: start-date
+    operator: less-than-or-equal
+    right: end-date
+    type: compare
+- id: group-agricultural-holder-role
+  primaryDataset: directory
+  route: group-agricultural-holder-roles
+  mutationMode: mutable
+  classification: restricted
+  fields:
+  - id: holder-farm
+    type: reference
+    required: true
+    classification: restricted
+    target: farm
+    apiName: holderFarm
+  - id: holder-group
+    type: reference
+    required: true
+    classification: restricted
+    target: informal-group
+    apiName: holderGroup
+  - id: start-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: startDate
+  - id: end-date
+    type: date
+    required: false
+    classification: restricted
+    apiName: endDate
+  constraints:
+  - left: start-date
+    operator: less-than-or-equal
+    right: end-date
+    type: compare
+reviewAuthorities:
+- id: casework
+  protocol: id.registrystack.org/protocols/review/v1
+actions:
+- id: correct-farm-name
+  execution:
+    mode: proposal
+    proposal:
       review:
+        type: required
         authority: casework
-        policyId: name-correction
-      onApproved:
+        source: agricultural-holdings
+        policy:
+          id: name-correction
+      reviewContext:
+        id: farm-name-context
+        fields:
+          farmId:
+            type: input
+            input: record
+          currentName:
+            type: record
+            input: record
+            field: name
+          changes:
+            type: changes
+            recordType: farm
+            fields:
+            - name
+          reason:
+            type: input
+            input: reason
+          supportingReference:
+            type: input
+            input: supporting-reference
+      application:
         mode: manual
       retention:
-        mode: operator_erase
-    hooks:
-      - id: casework-lifecycle-v1-name-correction
-        phase: after
-        trigger: request_lifecycle
-        projection: ["record"]
-        handler: {kind: url, destinationId: casework}
-accessProfiles:
-  - id: reader
-    default: false
-    principalClaim: registry_principal
-    requiredScopes:
-      - starter:reader
-    requiredPurposes:
-      - starter-learning
-    permissions:
-      - entity: farm
-        operations:
-          - get
-          - list
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-  - id: editor
-    default: true
-    principalClaim: registry_principal
-    requiredScopes:
-      - starter:editor
-    requiredPurposes:
-      - starter-learning
-    permissions:
-      - entity: farm
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - local-identifier
-          - name
-      - entity: person
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - local-identifier
-          - name
-      - entity: organization
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - local-identifier
-          - name
-      - entity: informal-group
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - local-identifier
-          - name
-      - entity: person-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - holder-farm
-          - holder-person
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - holder-farm
-          - holder-person
-          - start-date
-          - end-date
-      - entity: organization-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - holder-farm
-          - holder-organization
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - holder-farm
-          - holder-organization
-          - start-date
-          - end-date
-      - entity: group-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-          - create
-          - patch
-        readableFields:
-          - holder-farm
-          - holder-group
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-        writableFields:
-          - holder-farm
-          - holder-group
-          - start-date
-          - end-date
-      - entity: name-correction
-        operations:
-          - create
-          - get
-          - patch
-          - submit_request
-          - revise_request
-          - cancel_request
-        readableFields:
-          - record
-          - name
-          - reason
-          - supporting-reference
-        writableFields:
-          - record
-          - name
-          - reason
-          - supporting-reference
-        requestVisibility: owner
-        rowBoundaries: []
-        readableRequestFields:
-          - reason
-          - review_state
-    actorKind: human
-    requesterClients:
-      - editor
-  - id: reviewer
-    default: false
-    principalClaim: registry_principal
-    requiredScopes:
-      - starter:reviewer
-    requiredPurposes:
-      - starter-learning
-    permissions:
-      - entity: farm
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: person
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: organization
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: informal-group
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: person-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - holder-farm
-          - holder-person
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: organization-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - holder-farm
-          - holder-organization
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: group-agricultural-holder-role
-        operations:
-          - get
-          - list
-          - revisions
-        readableFields:
-          - holder-farm
-          - holder-group
-          - start-date
-          - end-date
-        rowBoundaries: []
-        revisionAccess: true
-      - entity: name-correction
-        operations:
-          - get
-          - apply_request
-        readableFields:
-          - record
-          - name
-          - reason
-          - supporting-reference
-        rowBoundaries: []
-        applyTargets:
-          - entity: farm
-            rowBoundaries: []
-        readableRequestFields:
-          - reason
-          - review_state
-    actorKind: human
-    requesterClients:
-      - reviewer
-  - id: openfn-service
-    default: false
-    principalClaim: registry_principal
-    requiredScopes:
-      - pilot:submit
-    requiredPurposes:
-      - agriculture-registration
-    permissions:
-      - entity: farm
-        operations:
-          - get
-          - create
-          - lookup
-        readableFields:
-          - local-identifier
-          - name
-        rowBoundaries: []
-        writableFields:
-          - local-identifier
-          - name
-        lookups:
-          - selector: by-local-identifier
-            valueOrigin: request
-      - entity: name-correction
-        operations:
-          - create
-          - get
-          - patch
-          - submit_request
-          - revise_request
-          - cancel_request
-        readableFields:
-          - record
-          - name
-          - reason
-          - supporting-reference
-        writableFields:
-          - record
-          - name
-          - reason
-          - supporting-reference
-        requestVisibility: owner
-        rowBoundaries: []
-        readableRequestFields:
-          - reason
-          - review_state
-    actorKind: human
-    requesterClients:
-      - openfn-service
-  - id: evidence-source
-    default: false
-    principalClaim: registry_principal
-    requiredScopes:
-      - pilot:evidence-source
-    requiredPurposes:
-      - evidence-source-read
-    permissions:
-      - entity: farm
-        operations:
-          - lookup
-        readableFields:
-          - local-identifier
-        rowBoundaries: []
-        lookups:
-          - selector: by-local-identifier
-            valueOrigin: request
-  - id: casework-reader
-    default: false
-    principalClaim: registry_principal
-    requiredScopes: [casework:source-reader]
-    requiredPurposes: [casework-sync]
-    permissions:
-      - entity: "name-correction"
-        operations: [get, list]
-        readableFields: ["record"]
-        readableRequestFields: [review_state]
-        rowBoundaries: []
+        mode: operator-erase
+  commitGuards:
+    targets:
+    - input: record
+      revision: unchanged
+  inputs:
+  - id: record
+    type: reference
+    target: farm
+    required: true
+    classification: restricted
+  - id: name
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 160
+  - id: reason
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 500
+  - id: supporting-reference
+    apiName: supportingReference
+    type: string
+    required: true
+    classification: restricted
+    minimumLength: 1
+    maximumLength: 500
+  plan:
+    type: fixed
+    effects:
+    - id: farm-name
+      target:
+        fromInput: record
+      operation: patch
+      set:
+        name:
+          fromInput: name

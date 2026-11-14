@@ -13,7 +13,7 @@ const require = createRequire('/opt/registry-adaptors/package.json');
 const { EvidenceClient, EvidenceClientError } = require('@registrystack/client').evidence;
 const clientPackage = require('/opt/registry-adaptors/node_modules/@registrystack/client/package.json');
 
-assert.equal(clientPackage.version, '0.38.0');
+assert.equal(clientPackage.version, '0.45.0');
 assert.equal(process.env.SSL_CERT_FILE, undefined, 'explicit client proof must not inherit SSL_CERT_FILE');
 assert.equal(process.env.NODE_EXTRA_CA_CERTS, undefined, 'explicit client proof must not inherit NODE_EXTRA_CA_CERTS');
 assert.equal(statSync(GENERATED).mode & 0o777, 0o600, 'generated client binding must remain owner-only');
@@ -73,7 +73,7 @@ try {
   unavailable = error;
 }
 assert.ok(unavailable instanceof EvidenceClientError, 'missing source did not return a native Evidence error');
-assert.equal(unavailable.kind, 'not_available', 'missing source was not mapped to Evidence unavailability');
+assert.equal(unavailable.kind, 'not-available', 'missing source was not mapped to Evidence unavailability');
 
 console.log(JSON.stringify({
   verified: 'native-explicit-evidence-send-and-verify',

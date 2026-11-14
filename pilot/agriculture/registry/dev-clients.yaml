@@ -1,4 +1,5 @@
-version: 1
+apiVersion: id.registrystack.org/formats/breg/dev-clients/v1alpha1
+kind: BRegDevClients
 clients:
   - id: reader
     accessProfiles:
@@ -20,7 +21,7 @@ clients:
       registry_principal: synthetic-editor
       registry_purpose: starter-learning
   - id: reviewer
-    accessProfiles: []
+    accessProfiles: [reviewer, correction-applier]
     allowBregAccess: true
     allowHumanFixture: true
     scopes:
@@ -34,13 +35,12 @@ clients:
     accessProfiles:
       - openfn-service
     allowBregAccess: true
-    allowHumanFixture: true
     scopes:
       - pilot:submit
     claims:
       registry_principal: synthetic-openfn-service
       registry_purpose: agriculture-registration
-      registry_actor_kind: human
+      registry_actor_kind: service
   - id: evidence-source
     accessProfiles:
       - evidence-source
